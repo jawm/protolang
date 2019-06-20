@@ -71,13 +71,14 @@ fn run(input: String, err_build: &ErrorBuilder) {
         return;
     }
     let tokens = tokens.into_iter().map(Result::unwrap).collect::<Vec<_>>();
-//    println!("{:?}", tokens);
+    println!("{:?}", tokens);
     let mut parser = Parser::new(tokens.iter(), err_build);
     match parser.parse() {
         Ok(x) => {
-            println!("{}", x);
-//            println!("{:?}", interpreter::Interpreter {err_build}.visit(&x));
-            println!("{:?}", interpreter::Interpreter {err_build}.visit(&x));
+            println!("{:?}", x);
+            if let Some(e) = (interpreter::Interpreter {err_build}.interpret(x)) {
+                println!("Error: {:?}", e);
+            }
         },
         Err(e) => println!("{:?}", e)
     }

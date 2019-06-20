@@ -45,6 +45,15 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
 }
 
 impl<'a> Interpreter<'a> {
+    pub fn interpret(&self, exprs: Vec<Expression>) -> Option<Error> {
+        for expr in exprs {
+            if let Err(e) = self.visit(&expr) {
+                return Some(e);
+            }
+        }
+        None
+    }
+
     fn literal_value(&self, x: &Literal) -> Value {
         match x {
             Literal::Integer(i) => Value::Integer(*i),

@@ -12,6 +12,7 @@ pub enum ErrorType {
     UnclosedParen,
     UnexpectedToken(TokenType),
     UnexpectedEOF,
+    MissingSemiColon,
 
     // Interpreting errors
     InterpretUnaryMinus(Value),

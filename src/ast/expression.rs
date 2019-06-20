@@ -24,6 +24,7 @@ pub enum Expression {
         operands: (Box<Expression>, Box<Expression>)
     },
     Grouping(Box<Expression>),
+//    Assign(Token, Box<Expression>),
 }
 
 impl Display for Expression {
@@ -43,7 +44,8 @@ impl Display for Expression {
             },
             Expression::Unary{kind,expr} => write!(f, "{}{}", kind, expr),
             Expression::Binary{kind,operands} => write!(f, "({} {} {})", kind, operands.0, operands.1),
-            Expression::Grouping(expr) => write!(f, "({})", expr)
+            Expression::Grouping(expr) => write!(f, "({})", expr),
+//            Expression::Assign(token, expr) => write!(f, "{}={}", token, expr),
         }
     }
 }

@@ -18,52 +18,53 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<expression::Expression, Error> {
+    pub fn parse(&mut self) -> Result<Vec<expression::Expression>, Error> {
         let exprs = self.read_multiple_exprs()?;
-        Ok(expression::Expression::Block(exprs))
+        Ok(exprs)
     }
 
     fn read_multiple_exprs(&mut self) -> Result<Vec<expression::Expression>, Error> {
         let mut exprs = vec![];
         while let Some(_) = self.tokens.peek() {
-            exprs.push(self.expression()?);
+            let expr = self.statement()?;
+            if let expression::Expression::Statement(ex) = &expr {
+                exprs.push(expr);
+                continue;
+            }
+            exprs.push(expr);
+            break;
         }
         Ok(exprs)
     }
 
     fn expression(&mut self) -> Result<expression::Expression, Error> {
-        self.statement()
-    }
-
-    // TODO this function is broken, not being used currently
-    fn block(&mut self) -> Result<expression::Expression, Error> {
-        if let Some(Token {token_type: TokenType::LeftBrace, ..}) = self.tokens.peek() {
-            self.tokens.next();
-            let exprs = self.read_multiple_exprs()?;
-            if let Some(Token {token_type: TokenType::RightBrace, ..}) = self.tokens.peek() {
-                self.tokens.next();
-                return Ok(expression::Expression::Block(exprs))
-            }
-            return Err(self.err_build.create(0, 0, ErrorType::UnexpectedEOF))
-        }
-        self.statement()
+        self.print()
     }
 
     fn statement(&mut self) -> Result<expression::Expression, Error> {
-        let mut expr = self.print()?;
+        let mut expr = self.expression()?;
         if let Some(Token {token_type: TokenType::SemiColon, ..}) = self.tokens.peek() {
             self.tokens.next();
             Ok(expression::Expression::Statement(Box::new(expr)))
         } else {
-            Ok(expr)
+            Err(self.err_build.create(0, 0, ErrorType::MissingSemiColon))
         }
     }
 
+    fn assign(&mut self) -> Result<expression::Expression, Error> {
+        let mut l = self.print()?;
+        if let Some(Token {token_type: TokenType::Equals, ..}) = self.tokens.peek() {
+            let right = self.assign()?;
+        }
+        Ok(l)
+    }
+
+    // TODO remove print statement in favour of a function for various reasons
     fn print(&mut self) -> Result<expression::Expression, Error> {
-        if let Some(Token {token_type: TokenType::Identifier(token), ..}) = self.tokens.peek() {
-            if token == "print" {
+        if let Some(Token {token_type: TokenType::Identifier(ident), ..}) = self.tokens.peek() {
+            if ident == "print" {
                 self.tokens.next();
-                return Ok(expression::Expression::Print(Box::new(self.expression()?)));
+                return Ok(expression::Expression::Print(Box::new(self.equality()?)));
             }
         }
         self.equality()
