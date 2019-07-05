@@ -38,7 +38,7 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn expression(&mut self) -> Result<expression::Expression, Error> {
-        self.print()
+        self.assign()
     }
 
     fn statement(&mut self) -> Result<expression::Expression, Error> {
@@ -54,6 +54,7 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     fn assign(&mut self) -> Result<expression::Expression, Error> {
         let mut l = self.print()?;
         if let Some(Token {token_type: TokenType::Equal, ..}) = self.tokens.peek() {
+            self.tokens.next();
             let right = self.assign()?;
             if let Expression::Variable(name) = l {
                 return Ok(Expression::Assign(name, Box::from(right)));

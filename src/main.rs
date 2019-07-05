@@ -106,6 +106,7 @@ fn run(input: String, err_build: &ErrorBuilder, interpreter: &Interpreter, mut o
     let mut parser = Parser::new(tokens.iter(), err_build);
     match parser.parse() {
         Ok(x) => {
+            println!("{:?}", x);
             if let Some(e) = (interpreter.interpret(x, &mut out)) {
                 writeln!(out, "{:?}", e);
             }
