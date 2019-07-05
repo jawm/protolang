@@ -13,14 +13,16 @@ pub enum ErrorType {
     UnexpectedToken(TokenType),
     UnexpectedEOF,
     MissingSemiColon,
+    InvalidAssignment,
 
     // Interpreting errors
-    InterpretUnaryMinus(Value),
-    InterpretBooleanNotWrongType(Value),
+    InterpretUnaryMinus,
+    InterpretBooleanNotWrongType,
     AddBool,
     SubtractWrongTypes,
     MultiplyWrongTypes,
     DivideWrongTypes,
+    NonExistantVariable,
 }
 
 #[derive(Debug)]

@@ -5,7 +5,8 @@ pub struct Printer {}
 
 impl ExpressionVisitor for Printer {
     type Item = String;
-    fn visit(&self, expr: &Expression) -> String {
+    type Passthrough = ();
+    fn visit(&self, expr: &Expression, _: Self::Passthrough) -> String {
         expr.to_string()
     }
 }

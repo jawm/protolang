@@ -3,9 +3,11 @@ use crate::errors::{Error, ErrorBuilder, ErrorType};
 use std::fmt::{Binary, Formatter, Display};
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
-use itertools::Itertools;
+use std::cell::RefCell;
+use core::borrow::Borrow;
+//use itertools::Itertools;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Integer(i64),
     Float(f64),
@@ -26,28 +28,42 @@ impl Display for Value {
 }
 
 pub struct Interpreter<'a> {
-    pub err_build: &'a ErrorBuilder
+    pub err_build: &'a ErrorBuilder,
+    pub environment: RefCell<std::collections::HashMap<String, Value>>,
 }
 
 impl<'a> ExpressionVisitor for Interpreter<'a> {
     type Item = Result<Value, Error>;
-    fn visit(&self, expr: &Expression) -> Self::Item {
+    type Passthrough = &'a mut std::io::Write;
+    fn visit(&self, expr: &Expression, passthrough: Self::Passthrough) -> Self::Item {
         match expr {
-            Expression::Statement(x) => self.statement_expression(x),
-            Expression::Block(exprs) => self.block_expression(exprs),
-            Expression::Print(x) => self.print_expression(x),
+            Expression::Statement(x) => self.statement_expression(x, passthrough),
+            Expression::Block(exprs) => self.block_expression(exprs, passthrough),
+            Expression::Print(x) => self.print_expression(x, passthrough),
             Expression::Literal(x) => Ok(self.literal_value(x)),
-            Expression::Unary {kind, expr} => self.unary_value(kind, expr),
-            Expression::Binary {kind, operands} => self.binary_value(kind, operands),
-            Expression::Grouping(e) => self.visit(e),
+            Expression::Unary {kind, expr} => self.unary_value(kind, expr, passthrough),
+            Expression::Binary {kind, operands} => self.binary_value(kind, operands, passthrough),
+            Expression::Grouping(e) => self.visit(e, passthrough),
+            Expression::Variable(s) => self.get_var(s),
+            Expression::Assign(s, expr) => {
+                let val = self.visit(expr, passthrough)?;
+                self.set_var(s, val)
+            },
         }
     }
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn interpret(&self, exprs: Vec<Expression>) -> Option<Error> {
+    pub fn new(err_build: &'a ErrorBuilder) -> Interpreter {
+        Interpreter {
+            err_build,
+            environment: RefCell::new(std::collections::HashMap::new())
+        }
+    }
+
+    pub fn interpret(&self, exprs: Vec<Expression>, out: &mut std::io::Write) -> Option<Error> {
         for expr in exprs {
-            if let Err(e) = self.visit(&expr) {
+            if let Err(e) = self.visit(&expr, out) {
                 return Some(e);
             }
         }
@@ -64,42 +80,42 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn statement_expression(&self, expr: &Box<Expression>) -> Result<Value, Error> {
-        self.visit(expr)
+    fn statement_expression(&self, expr: &Box<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+        self.visit(expr, out)
     }
 
-    fn block_expression(&self, exprs: &Vec<Expression>) -> Result<Value, Error> {
+    fn block_expression(&self, exprs: &Vec<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
         let mut last = Value::String("None type from block expression".to_string());
         for expr in exprs {
-            last = self.visit(expr)?
+            last = self.visit(expr, out)?
         }
         return Ok(last)
     }
 
-    fn print_expression(&self, expr: &Box<Expression>) -> Result<Value, Error> {
-        let v = self.visit(expr)?;
-        println!("{}", v);
+    fn print_expression(&self, expr: &Box<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+        let v = self.visit(expr, out)?;
+        writeln!(out, "{}", v);
         Ok(v)
     }
 
-    fn unary_value(&self, kind: &UnaryOperation, expr: &Box<Expression>) -> Result<Value, Error> {
-        let v = self.visit(expr)?;
+    fn unary_value(&self, kind: &UnaryOperation, expr: &Box<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+        let v = self.visit(expr, out)?;
         match kind {
             UnaryOperation::Not => match v {
                 Value::Bool(b) => Ok(Value::Bool(!b)),
-                v => Err(self.err_build.create(0, 0, ErrorType::InterpretBooleanNotWrongType(v)))
+                v => Err(self.err_build.create(0, 0, ErrorType::InterpretBooleanNotWrongType))
             },
             UnaryOperation::Minus => match v {
                 Value::Integer(i) => Ok(Value::Integer(-i)),
                 Value::Float(f) => Ok(Value::Float(-f)),
-                v => Err(self.err_build.create(0, 0, ErrorType::InterpretUnaryMinus(v))),
+                v => Err(self.err_build.create(0, 0, ErrorType::InterpretUnaryMinus)),
             }
         }
     }
 
-    fn binary_value(&self, kind: &BinaryOperation, operands: &(Box<Expression>, Box<Expression>)) -> Result<Value, Error> {
-        let left = self.visit(&operands.0)?;
-        let right = self.visit(&operands.1)?;
+    fn binary_value(&self, kind: &BinaryOperation, operands: &(Box<Expression>, Box<Expression>), out: &mut std::io::Write) -> Result<Value, Error> {
+        let left = self.visit(&operands.0, out)?;
+        let right = self.visit(&operands.1, out)?;
         match kind {
             BinaryOperation::Plus => left + right,
             BinaryOperation::Equals => Ok(Value::Bool(left == right)),
@@ -112,6 +128,15 @@ impl<'a> Interpreter<'a> {
             BinaryOperation::Multiply => left * right,
             BinaryOperation::Divide => left / right,
         }.map_err(|e|self.err_build.create(0, 0, e))
+    }
+
+    fn get_var(&self, s: &str) -> Result<Value, Error> {
+        self.environment.borrow().get(s).map(Clone::clone).ok_or(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
+    }
+
+    fn set_var(&self, s: &str, v: Value) -> Result<Value, Error> {
+        self.environment.borrow_mut().insert(s.to_string(), v);
+        Ok(Value::String("THIS IS A NONE VALUE FROM SETTING VARIABLE".to_string()))
     }
 }
 

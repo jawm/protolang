@@ -11,6 +11,7 @@ pub enum Statement {
 
 #[derive(Debug)]
 pub enum Expression {
+    Variable(String),
     Statement(Box<Expression>),
     Block(Vec<Expression>),
     Print(Box<Expression>),
@@ -24,12 +25,13 @@ pub enum Expression {
         operands: (Box<Expression>, Box<Expression>)
     },
     Grouping(Box<Expression>),
-//    Assign(Token, Box<Expression>),
+    Assign(String, Box<Expression>),
 }
 
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
+            Expression::Variable(s) => write!(f, "{}", s),
             Expression::Statement(expr) => write!(f, "{}; ", expr),
             Expression::Block(e) => {
                 write!(f, "{{")?;
@@ -45,20 +47,21 @@ impl Display for Expression {
             Expression::Unary{kind,expr} => write!(f, "{}{}", kind, expr),
             Expression::Binary{kind,operands} => write!(f, "({} {} {})", kind, operands.0, operands.1),
             Expression::Grouping(expr) => write!(f, "({})", expr),
-//            Expression::Assign(token, expr) => write!(f, "{}={}", token, expr),
+            Expression::Assign(name, expr) => write!(f, "{}={}", name, expr),
         }
     }
 }
 
 impl Expression {
-    pub fn accept(&self, visitor: impl ExpressionVisitor) {
-        visitor.visit(self);
+    pub fn accept<T>(&self, visitor: impl ExpressionVisitor<Passthrough=T>, passthrough: T) {
+        visitor.visit(self, passthrough);
     }
 }
 
 pub trait ExpressionVisitor {
     type Item;
-    fn visit(&self, expr: &Expression) -> Self::Item;
+    type Passthrough;
+    fn visit(&self, expr: &Expression, passthrough: Self::Passthrough) -> Self::Item;
 }
 
 #[derive(Debug)]

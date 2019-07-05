@@ -53,8 +53,13 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
 
     fn assign(&mut self) -> Result<expression::Expression, Error> {
         let mut l = self.print()?;
-        if let Some(Token {token_type: TokenType::Equals, ..}) = self.tokens.peek() {
+        if let Some(Token {token_type: TokenType::Equal, ..}) = self.tokens.peek() {
             let right = self.assign()?;
+            if let Expression::Variable(name) = l {
+                return Ok(Expression::Assign(name, Box::from(right)));
+            } else {
+                return Err(self.err_build.create(0, 0, ErrorType::InvalidAssignment))
+            }
         }
         Ok(l)
     }
@@ -137,7 +142,8 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                     } else {
                         Err(self.err_build.create(token.location, 1, ErrorType::UnclosedParen))
                     }
-                }
+                },
+                TokenType::Identifier(s) => Ok(Expression::Variable(s.to_string())),
                 x => Err(self.err_build.create(token.location, 1, ErrorType::UnexpectedToken(x.clone())))
             }
         } else {
