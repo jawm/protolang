@@ -3,8 +3,9 @@ use crate::errors::{Error, ErrorBuilder, ErrorType};
 use std::fmt::{Binary, Formatter, Display};
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
-use std::cell::RefCell;
+use std::cell::{RefCell, Ref};
 use core::borrow::Borrow;
+use std::collections::HashMap;
 //use itertools::Itertools;
 
 #[derive(Debug, Clone)]
@@ -21,15 +22,35 @@ impl Display for Value {
         match self {
             Value::Integer(x) => write!(f, "{}", x),
             Value::Float(x) => write!(f, "{}", x),
-            Value::String(x) => write!(f, "\"{}\"", x),
+            Value::String(x) => write!(f, "{}", x),
             Value::Bool(x) => write!(f, "{}", x),
         }
     }
 }
 
+pub struct Environment {
+    scopes: Vec<HashMap<String, Value>>,
+}
+
+impl Environment {
+    pub fn new() -> Environment {
+        Environment {
+            scopes: vec![HashMap::new()],
+        }
+    }
+
+    pub fn wrap(&mut self) {
+        self.scopes.insert(0, HashMap::new());
+    }
+
+    pub fn unwrap(&mut self) {
+        self.scopes.remove(0);
+    }
+}
+
 pub struct Interpreter<'a> {
     pub err_build: &'a ErrorBuilder,
-    pub environment: RefCell<std::collections::HashMap<String, Value>>,
+    pub environment: RefCell<Environment>,
 }
 
 impl<'a> ExpressionVisitor for Interpreter<'a> {
@@ -57,11 +78,11 @@ impl<'a> Interpreter<'a> {
     pub fn new(err_build: &'a ErrorBuilder) -> Interpreter {
         Interpreter {
             err_build,
-            environment: RefCell::new(std::collections::HashMap::new())
+            environment: RefCell::new(Environment::new()),
         }
     }
 
-    pub fn interpret(&self, exprs: Vec<Expression>, out: &mut std::io::Write) -> Option<Error> {
+    pub fn interpret(&self, exprs: Vec<Expression>, out: &'a mut std::io::Write) -> Option<Error> {
         for expr in exprs {
             if let Err(e) = self.visit(&expr, out) {
                 return Some(e);
@@ -80,25 +101,27 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn statement_expression(&self, expr: &Box<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+    fn statement_expression(&self, expr: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
         self.visit(expr, out)
     }
 
-    fn block_expression(&self, exprs: &Vec<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+    fn block_expression(&self, exprs: &Vec<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+        self.environment.borrow_mut().wrap();
         let mut last = Value::String("None type from block expression".to_string());
         for expr in exprs {
             last = self.visit(expr, out)?
         }
+        self.environment.borrow_mut().unwrap();
         return Ok(last)
     }
 
-    fn print_expression(&self, expr: &Box<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+    fn print_expression(&self, expr: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
         let v = self.visit(expr, out)?;
         writeln!(out, "{}", v);
         Ok(v)
     }
 
-    fn unary_value(&self, kind: &UnaryOperation, expr: &Box<Expression>, out: &mut std::io::Write) -> Result<Value, Error> {
+    fn unary_value(&self, kind: &UnaryOperation, expr: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
         let v = self.visit(expr, out)?;
         match kind {
             UnaryOperation::Not => match v {
@@ -113,7 +136,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn binary_value(&self, kind: &BinaryOperation, operands: &(Box<Expression>, Box<Expression>), out: &mut std::io::Write) -> Result<Value, Error> {
+    fn binary_value(&self, kind: &BinaryOperation, operands: &(Box<Expression>, Box<Expression>), out: &'a mut std::io::Write) -> Result<Value, Error> {
         let left = self.visit(&operands.0, out)?;
         let right = self.visit(&operands.1, out)?;
         match kind {
@@ -131,11 +154,17 @@ impl<'a> Interpreter<'a> {
     }
 
     fn get_var(&self, s: &str) -> Result<Value, Error> {
-        self.environment.borrow().get(s).map(Clone::clone).ok_or(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
+        let scopes = &self.environment.borrow().scopes;
+        for env in scopes {
+            if env.contains_key(s) {
+                return Ok(env.get(s).unwrap().clone());
+            }
+        }
+        Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
     }
 
     fn set_var(&self, s: &str, v: Value) -> Result<Value, Error> {
-        self.environment.borrow_mut().insert(s.to_string(), v);
+        self.environment.borrow_mut().scopes[0].insert(s.to_string(), v);
         Ok(Value::String("THIS IS A NONE VALUE FROM SETTING VARIABLE".to_string()))
     }
 }

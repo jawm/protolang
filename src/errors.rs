@@ -13,6 +13,7 @@ pub enum ErrorType {
     UnexpectedToken(TokenType),
     UnexpectedEOF,
     MissingSemiColon,
+    MissingRightBrace,
     InvalidAssignment,
 
     // Interpreting errors

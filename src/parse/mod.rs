@@ -38,7 +38,7 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn expression(&mut self) -> Result<expression::Expression, Error> {
-        self.assign()
+        self.block()
     }
 
     fn statement(&mut self) -> Result<expression::Expression, Error> {
@@ -49,6 +49,23 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         } else {
             Err(self.err_build.create(0, 0, ErrorType::MissingSemiColon))
         }
+    }
+
+    fn block(&mut self) -> Result<expression::Expression, Error> {
+        if let Some(Token {token_type: TokenType::LeftBrace, ..}) = self.tokens.peek() {
+            self.tokens.next();
+            let mut exprs = vec![];
+            loop {
+                match self.tokens.peek() {
+                    None => return Err(self.err_build.create(0, 0, ErrorType::MissingRightBrace)),
+                    Some(Token{token_type: TokenType::RightBrace, ..}) => break,
+                    _ => exprs.push(self.statement()?)
+                }
+            }
+            self.tokens.next(); // consume the right brace
+            return Ok(Expression::Block(exprs));
+        }
+        return self.assign();
     }
 
     fn assign(&mut self) -> Result<expression::Expression, Error> {

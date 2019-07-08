@@ -61,7 +61,7 @@ pub fn run_wasm(input: &str, output: &js_sys::Function) {
     }
     let mut w = Writer{output};
     let err_build = &ErrorBuilder::new("repl".to_string(), format!("Error in input"));
-    run(input.to_string(), err_build, &mut Interpreter::new(err_build), w);
+    run(input.to_string(), err_build, &mut Interpreter::new(err_build), &mut w);
 }
 
 fn run_file(file: &str) {
@@ -71,7 +71,7 @@ fn run_file(file: &str) {
         contents,
         x,
         &Interpreter::new(x),
-        std::io::stdout()
+        &mut std::io::stdout()
     );
 }
 
@@ -90,12 +90,12 @@ fn run_prompt() {
             line,
             err_build,
             interpreter,
-            std::io::stdout()
+            &mut std::io::stdout()
         );
     }
 }
 
-fn run(input: String, err_build: &ErrorBuilder, interpreter: &Interpreter, mut out: impl std::io::Write) {
+fn run<'a, T: std::io::Write>(input: String, err_build: &ErrorBuilder, interpreter: &'a Interpreter<'a>, out: &'a mut T) {
     let (tokens, errors): (Vec<Result<Token, Error>>, Vec<Result<Token, Error>>) =
         Lexer::new(&input, err_build).partition(Result::is_ok);
     if errors.len() > 0 {
@@ -106,8 +106,7 @@ fn run(input: String, err_build: &ErrorBuilder, interpreter: &Interpreter, mut o
     let mut parser = Parser::new(tokens.iter(), err_build);
     match parser.parse() {
         Ok(x) => {
-            println!("{:?}", x);
-            if let Some(e) = (interpreter.interpret(x, &mut out)) {
+            if let Some(e) = (interpreter.interpret(x, out)) {
                 writeln!(out, "{:?}", e);
             }
         },
