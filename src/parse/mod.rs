@@ -30,6 +30,12 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
             if let expression::Expression::Statement(ex) = &expr {
                 exprs.push(expr);
                 continue;
+            } else if self.tokens.peek().is_some() {
+                let next = self.tokens.next().unwrap();
+                return Err(self.err_build.create(next.location, 0, ErrorType::UnexpectedToken(next.token_type.clone())));
+            } else {
+                exprs.push(expr);
+                break;
             }
             exprs.push(expr);
             break;
@@ -47,7 +53,7 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
             self.tokens.next();
             Ok(expression::Expression::Statement(Box::new(expr)))
         } else {
-            Err(self.err_build.create(0, 0, ErrorType::MissingSemiColon))
+            Ok(expr)
         }
     }
 
@@ -59,7 +65,15 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                 match self.tokens.peek() {
                     None => return Err(self.err_build.create(0, 0, ErrorType::MissingRightBrace)),
                     Some(Token{token_type: TokenType::RightBrace, ..}) => break,
-                    _ => exprs.push(self.statement()?)
+                    _ => {
+                        let expr = self.statement()?;
+                        if let Expression::Statement(_) = expr {
+                            exprs.push(expr);
+                        } else {
+                            exprs.push(expr);
+                            break
+                        }
+                    }
                 }
             }
             self.tokens.next(); // consume the right brace
@@ -106,10 +120,10 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         if let Some(Token {token_type: TokenType::If, ..}) = self.tokens.peek() {
             let token = self.tokens.next().unwrap();
             if let Ok(Expression::Grouping(expr)) = self.primary() {
-                let yes = self.statement()?;
+                let yes = self.expression()?;
                 if let Some(Token{token_type: TokenType::Else, ..}) = self.tokens.peek() {
                     self.tokens.next();
-                    let no = self.statement()?;
+                    let no = self.expression()?;
                     return Ok(Expression::If(expr, Box::new(yes), Some(Box::new(no))));
                 }
                 return Ok(Expression::If(expr, Box::new(yes), None));
