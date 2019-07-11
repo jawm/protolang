@@ -50,6 +50,7 @@ pub enum TokenType {
     Float(f64),
 
     Import,
+    NonLocal,
     And,
     Else,
     False,

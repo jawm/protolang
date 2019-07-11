@@ -70,6 +70,10 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
                 let val = self.visit(expr, passthrough)?;
                 self.set_var(s, val)
             },
+            Expression::NonLocalAssign(s, expr) => {
+                let val = self.visit(expr, passthrough)?;
+                self.set_nonlocal(s, val)
+            }
         }
     }
 }
@@ -158,6 +162,17 @@ impl<'a> Interpreter<'a> {
         for env in scopes {
             if env.contains_key(s) {
                 return Ok(env.get(s).unwrap().clone());
+            }
+        }
+        Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
+    }
+
+    fn set_nonlocal(&self, s: &str, v: Value) -> Result<Value, Error> {
+        let scopes = &mut self.environment.borrow_mut().scopes;
+        for env in scopes {
+            if env.contains_key(s) {
+                env.insert(s.to_string(), v);
+                return Ok(Value::String("THIS IS A NONE VALUE FROM SETTING NON LOCAL".to_string()));
             }
         }
         Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))

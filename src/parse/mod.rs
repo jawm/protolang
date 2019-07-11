@@ -69,15 +69,24 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn assign(&mut self) -> Result<expression::Expression, Error> {
+        let nonlocal = if let Some(Token {token_type: TokenType::NonLocal, ..}) = self.tokens.peek() {
+            self.tokens.next();
+            true
+        } else {false};
         let mut l = self.print()?;
         if let Some(Token {token_type: TokenType::Equal, ..}) = self.tokens.peek() {
             self.tokens.next();
             let right = self.assign()?;
             if let Expression::Variable(name) = l {
-                return Ok(Expression::Assign(name, Box::from(right)));
+                if nonlocal {
+                    return Ok(Expression::NonLocalAssign(name, Box::new(right)));
+                }
+                return Ok(Expression::Assign(name, Box::new(right)));
             } else {
                 return Err(self.err_build.create(0, 0, ErrorType::InvalidAssignment))
             }
+        } else if nonlocal {
+            return Err(self.err_build.create(0, 0, ErrorType::UnexpectedToken(TokenType::NonLocal)))
         }
         Ok(l)
     }

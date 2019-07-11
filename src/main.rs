@@ -106,6 +106,7 @@ fn run<'a, T: std::io::Write>(input: String, err_build: &ErrorBuilder, interpret
     let mut parser = Parser::new(tokens.iter(), err_build);
     match parser.parse() {
         Ok(x) => {
+            println!("{:?}", x);
             if let Some(e) = (interpreter.interpret(x, out)) {
                 writeln!(out, "{:?}", e);
             }

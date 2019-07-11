@@ -25,6 +25,7 @@ pub enum Expression {
         operands: (Box<Expression>, Box<Expression>)
     },
     Grouping(Box<Expression>),
+    NonLocalAssign(String, Box<Expression>),
     Assign(String, Box<Expression>),
 }
 
@@ -47,6 +48,7 @@ impl Display for Expression {
             Expression::Unary{kind,expr} => write!(f, "{}{}", kind, expr),
             Expression::Binary{kind,operands} => write!(f, "({} {} {})", kind, operands.0, operands.1),
             Expression::Grouping(expr) => write!(f, "({})", expr),
+            Expression::NonLocalAssign(name, expr) => write!(f, "nonlocal {}={}", name, expr),
             Expression::Assign(name, expr) => write!(f, "{}={}", name, expr),
         }
     }

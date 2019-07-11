@@ -129,6 +129,7 @@ impl<'a> Iterator for Lexer<'a> {
 fn keyword_matcher(idx: usize, s: &str) -> Option<Result<Token,Error>> {
     Token::new(idx, match s {
         "import" => TokenType::Import,
+        "nonlocal" => TokenType::NonLocal,
         "and" => TokenType::And,
         "else" => TokenType::Else,
         "false" => TokenType::False,
