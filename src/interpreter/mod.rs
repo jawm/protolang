@@ -73,7 +73,8 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
             Expression::NonLocalAssign(s, expr) => {
                 let val = self.visit(expr, passthrough)?;
                 self.set_nonlocal(s, val)
-            }
+            },
+            Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough)
         }
     }
 }
@@ -181,6 +182,15 @@ impl<'a> Interpreter<'a> {
     fn set_var(&self, s: &str, v: Value) -> Result<Value, Error> {
         self.environment.borrow_mut().scopes[0].insert(s.to_string(), v);
         Ok(Value::String("THIS IS A NONE VALUE FROM SETTING VARIABLE".to_string()))
+    }
+
+    fn if_cond(&self, cond: &Box<Expression>, yes: &Box<Expression>, no: &Option<Box<Expression>>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+        let cond_eval = self.visit(cond, out)?;
+        if let Value::Bool(true) = cond_eval {
+            self.visit(yes, out)
+        } else {
+            no.as_ref().map_or(Ok(Value::String("PLACE HOLDER NONE VALUE FROM IF ELSE BRANCH".to_string())), |v|self.visit(&v, out))
+        }
     }
 }
 

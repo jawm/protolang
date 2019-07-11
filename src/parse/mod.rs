@@ -99,6 +99,25 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                 return Ok(expression::Expression::Print(Box::new(self.equality()?)));
             }
         }
+        self.if_cond()
+    }
+
+    fn if_cond(&mut self) -> Result<Expression, Error> {
+        if let Some(Token {token_type: TokenType::If, ..}) = self.tokens.peek() {
+            let token = self.tokens.next().unwrap();
+            if let Ok(Expression::Grouping(expr)) = self.primary() {
+                let yes = self.statement()?;
+                if let Some(Token{token_type: TokenType::Else, ..}) = self.tokens.peek() {
+                    self.tokens.next();
+                    let no = self.statement()?;
+                    return Ok(Expression::If(expr, Box::new(yes), Some(Box::new(no))));
+                }
+                return Ok(Expression::If(expr, Box::new(yes), None));
+            } else {
+                return Err(self.err_build.create(token.location + 1, 1, ErrorType::ConditionGrouping));
+            }
+
+        }
         self.equality()
     }
 

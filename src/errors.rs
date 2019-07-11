@@ -15,6 +15,7 @@ pub enum ErrorType {
     MissingSemiColon,
     MissingRightBrace,
     InvalidAssignment,
+    ConditionGrouping, // condition in if statement must be surrounded by brackets
 
     // Interpreting errors
     InterpretUnaryMinus,

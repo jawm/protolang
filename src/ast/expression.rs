@@ -27,6 +27,7 @@ pub enum Expression {
     Grouping(Box<Expression>),
     NonLocalAssign(String, Box<Expression>),
     Assign(String, Box<Expression>),
+    If(Box<Expression>, Box<Expression>, Option<Box<Expression>>)
 }
 
 impl Display for Expression {
@@ -50,6 +51,13 @@ impl Display for Expression {
             Expression::Grouping(expr) => write!(f, "({})", expr),
             Expression::NonLocalAssign(name, expr) => write!(f, "nonlocal {}={}", name, expr),
             Expression::Assign(name, expr) => write!(f, "{}={}", name, expr),
+            Expression::If(cond, yes, no) => {
+                if no.is_some() {
+                    write!(f, "if ({}) {} else {}", cond, yes, no.as_ref().unwrap())
+                } else {
+                    write!(f, "if ({}) {}", cond, yes)
+                }
+            }
         }
     }
 }
