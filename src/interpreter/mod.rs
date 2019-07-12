@@ -74,7 +74,9 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
                 let val = self.visit(expr, passthrough)?;
                 self.set_nonlocal(s, val)
             },
-            Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough)
+            Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough),
+            Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
+            Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
         }
     }
 }
@@ -190,6 +192,24 @@ impl<'a> Interpreter<'a> {
             self.visit(yes, out)
         } else {
             no.as_ref().map_or(Ok(Value::String("PLACE HOLDER NONE VALUE FROM IF ELSE BRANCH".to_string())), |v|self.visit(&v, out))
+        }
+    }
+
+    fn logic_or(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+        let a_res = self.visit(a, out);
+        if let Ok(Value::Bool(true)) = a_res {
+            a_res
+        } else {
+            self.visit(b, out)
+        }
+    }
+
+    fn logic_and(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+        let a_res = self.visit(a, out);
+        if let Ok(Value::Bool(true)) = a_res {
+            self.visit(b, out)
+        } else {
+            Ok(Value::Bool(false))
         }
     }
 }

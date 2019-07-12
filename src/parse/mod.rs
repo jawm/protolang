@@ -110,7 +110,7 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         if let Some(Token {token_type: TokenType::Identifier(ident), ..}) = self.tokens.peek() {
             if ident == "print" {
                 self.tokens.next();
-                return Ok(expression::Expression::Print(Box::new(self.equality()?)));
+                return Ok(expression::Expression::Print(Box::new(self.if_cond()?)));
             }
         }
         self.if_cond()

@@ -4,12 +4,6 @@ use std::convert::TryFrom;
 use crate::lex::tokens::{Token, TokenType};
 
 #[derive(Debug)]
-pub enum Statement {
-    Expression(Expression),
-    Print(Expression)
-}
-
-#[derive(Debug)]
 pub enum Expression {
     Variable(String),
     Statement(Box<Expression>),
@@ -27,7 +21,9 @@ pub enum Expression {
     Grouping(Box<Expression>),
     NonLocalAssign(String, Box<Expression>),
     Assign(String, Box<Expression>),
-    If(Box<Expression>, Box<Expression>, Option<Box<Expression>>)
+    If(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
+    LogicOr(Box<Expression>, Box<Expression>),
+    LogicAnd(Box<Expression>, Box<Expression>)
 }
 
 impl Display for Expression {
@@ -57,7 +53,9 @@ impl Display for Expression {
                 } else {
                     write!(f, "if ({}) {}", cond, yes)
                 }
-            }
+            },
+            Expression::LogicOr(a, b) => write!(f, "{} || {}", a, b),
+            Expression::LogicAnd(a, b) => write!(f, "{} && {}", a, b),
         }
     }
 }
