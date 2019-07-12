@@ -52,4 +52,8 @@ print conditionalVariable;
 # Blocks themselves, and if statements still need to have semicolons at the end, since they are just a normal expression.
 
 # While loops:
-
+count = 0;
+while (count < 10) {
+    nonlocal count = count + 1;
+    print count;
+}
