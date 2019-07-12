@@ -1,1 +1,1 @@
-print if (false) "hello" else "goodbye";
+print false and (print true);

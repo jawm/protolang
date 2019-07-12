@@ -132,7 +132,27 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
             }
 
         }
-        self.equality()
+        self.logic_or()
+    }
+
+    fn logic_or(&mut self) -> Result<Expression, Error> {
+        let mut expr = self.logic_and()?;
+        while let Some(Token{token_type: TokenType::Or, ..}) = self.tokens.peek() {
+            self.tokens.next();
+            let right = self.logic_and()?;
+            expr = Expression::LogicOr(Box::new(expr), Box::new(right));
+        }
+        Ok(expr)
+    }
+
+    fn logic_and(&mut self) -> Result<Expression, Error> {
+        let mut expr = self.equality()?;
+        while let Some(Token{token_type: TokenType::And, ..}) = self.tokens.peek() {
+            self.tokens.next();
+            let right = self.equality()?;
+            expr = Expression::LogicAnd(Box::new(expr), Box::new(right));
+        }
+        Ok(expr)
     }
 
     fn binary_helper(&mut self, matcher: impl Fn(&TokenType)->bool, left: expression::Expression, right: fn(&mut Parser<'a, T>)->Result<expression::Expression, Error>) -> Result<expression::Expression, Error> {
