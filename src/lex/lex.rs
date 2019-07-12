@@ -45,7 +45,7 @@ impl<'a> Lexer<'a> {
         loop {
             if let Some((idx, c)) = self.chars.next() {
                 if c == '\n' {
-                    return None;
+                    return self.next();
                 }
             } else {
                 return None;
