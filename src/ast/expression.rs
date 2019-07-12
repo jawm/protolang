@@ -23,7 +23,8 @@ pub enum Expression {
     Assign(String, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
     LogicOr(Box<Expression>, Box<Expression>),
-    LogicAnd(Box<Expression>, Box<Expression>)
+    LogicAnd(Box<Expression>, Box<Expression>),
+    While(Box<Expression>, Box<Expression>),
 }
 
 impl Display for Expression {
@@ -56,6 +57,7 @@ impl Display for Expression {
             },
             Expression::LogicOr(a, b) => write!(f, "{} || {}", a, b),
             Expression::LogicAnd(a, b) => write!(f, "{} && {}", a, b),
+            Expression::While(cond, body) => write!(f, "while ({}) {}", cond, body),
         }
     }
 }

@@ -132,6 +132,19 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
             }
 
         }
+        self.while_loop()
+    }
+
+    fn while_loop(&mut self) -> Result<Expression, Error> {
+        if let Some(Token {token_type: TokenType::While, ..}) = self.tokens.peek() {
+            let token = self.tokens.next().unwrap();
+            if let Ok(Expression::Grouping(expr)) = self.primary() {
+                let body = self.expression()?;
+                return Ok(Expression::While(expr, Box::new(body)));
+            } else {
+                return Err(self.err_build.create(token.location + 1, 1, ErrorType::ConditionGrouping));
+            }
+        }
         self.logic_or()
     }
 

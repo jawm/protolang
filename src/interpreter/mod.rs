@@ -77,6 +77,7 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
             Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough),
             Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
             Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
+            Expression::While(cond, body) => self.while_loop(cond, body, passthrough),
         }
     }
 }
@@ -193,6 +194,19 @@ impl<'a> Interpreter<'a> {
         } else {
             no.as_ref().map_or(Ok(Value::String("PLACE HOLDER NONE VALUE FROM IF ELSE BRANCH".to_string())), |v|self.visit(&v, out))
         }
+    }
+
+    fn while_loop(&self, cond: &Box<Expression>, body: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+        let mut result = Value::String("NONE VALUE FROM WHILE LOOP".to_string());
+        loop {
+            let eval = self.visit(cond, out)?;
+            if let Value::Bool(true) = eval {
+                result = self.visit(body, out)?;
+            } else {
+                return Ok(result)
+            }
+        }
+
     }
 
     fn logic_or(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
