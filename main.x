@@ -1,3 +1,5 @@
+clock();
+
 # here we define variable `abc` at the top level.
 abc = "hello";
 
@@ -56,4 +58,7 @@ count = 0;
 while (count < 10) {
     nonlocal count = count + 1;
     print count;
-}
+};
+
+
+print clock();

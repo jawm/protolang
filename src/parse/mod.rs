@@ -216,7 +216,40 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                     expr: Box::new(self.unary()?)
                 })
             },
-            _ => self.primary()
+            _ => self.call()
+        }
+    }
+
+    fn call(&mut self) -> Result<Expression, Error> {
+        let mut expr = self.primary()?;
+        loop {
+            if let Some(Token{ token_type: TokenType::LeftParen, ..}) = self.tokens.peek() {
+                self.tokens.next();
+                expr = self.finish_call(expr)?;
+            } else {
+                break
+            }
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, expr: Expression) -> Result<Expression, Error> {
+        let mut args = vec![];
+        if let Some(Token{token_type: TokenType::RightParen, ..}) = self.tokens.peek() {}
+        else {
+            loop {
+                args.push(self.expression()?);
+                if let Some(Token{token_type: TokenType::Comma, ..}) = self.tokens.peek() {
+                    self.tokens.next();
+                } else {
+                    break;
+                }
+            }
+        }
+        match self.tokens.next() {
+            Some(Token{token_type: TokenType::RightParen, ..}) => Ok(Expression::Call(Box::new(expr), args)),
+            Some(tok) => Err(self.err_build.create(tok.location, 0, ErrorType::MissingRightParen)),
+            None => Err(self.err_build.create(0, 0, ErrorType::UnexpectedEOF)),
         }
     }
 

@@ -16,15 +16,19 @@ pub enum ErrorType {
     MissingRightBrace,
     InvalidAssignment,
     ConditionGrouping, // condition in if statement must be surrounded by brackets
+    MissingRightParen,
 
     // Interpreting errors
     InterpretUnaryMinus,
     InterpretBooleanNotWrongType,
     AddBool,
+    AddIncompatible,
     SubtractWrongTypes,
     MultiplyWrongTypes,
     DivideWrongTypes,
     NonExistantVariable,
+    CallNonFunction,
+    WrongNumberArgs,
 }
 
 #[derive(Debug)]

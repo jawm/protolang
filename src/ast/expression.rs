@@ -25,6 +25,7 @@ pub enum Expression {
     LogicOr(Box<Expression>, Box<Expression>),
     LogicAnd(Box<Expression>, Box<Expression>),
     While(Box<Expression>, Box<Expression>),
+    Call(Box<Expression>, Vec<Expression>),
 }
 
 impl Display for Expression {
@@ -58,6 +59,13 @@ impl Display for Expression {
             Expression::LogicOr(a, b) => write!(f, "{} || {}", a, b),
             Expression::LogicAnd(a, b) => write!(f, "{} && {}", a, b),
             Expression::While(cond, body) => write!(f, "while ({}) {}", cond, body),
+            Expression::Call(callee, args) => {
+                write!(f, "{}(", callee);
+                for arg in args {
+                    write!(f, "{}", arg);
+                }
+                write!(f, ")")
+            }
         }
     }
 }

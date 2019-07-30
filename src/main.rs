@@ -1,4 +1,5 @@
 #![feature(exclusive_range_pattern)]
+#![feature(duration_float)]
 
 extern crate clap;
 extern crate wasm_bindgen;
@@ -107,7 +108,7 @@ fn run<'a, T: std::io::Write>(input: String, err_build: &ErrorBuilder, interpret
     match parser.parse() {
         Ok(x) => {
             println!("{:?}", x);
-            if let Some(e) = (interpreter.interpret(x, out)) {
+            if let Some(e) = interpreter.interpret(x, out) {
                 writeln!(out, "{:?}", e);
             }
         },

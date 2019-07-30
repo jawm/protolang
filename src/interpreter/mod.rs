@@ -1,9 +1,10 @@
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ast::expression::{ExpressionVisitor, Expression, Literal, UnaryOperation, BinaryOperation};
 use crate::errors::{Error, ErrorBuilder, ErrorType};
-use std::fmt::{Binary, Formatter, Display};
+use std::fmt::{Binary, Formatter, Display, Debug};
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
-use std::cell::{RefCell, Ref};
+use std::cell::{RefCell, Ref, Cell};
 use core::borrow::Borrow;
 use std::collections::HashMap;
 //use itertools::Itertools;
@@ -14,7 +15,10 @@ pub enum Value {
     Float(f64),
     String(String),
     Bool(bool),
-
+    Callable {
+        arity: usize,
+        func: Box<fn(Vec<Value>)->Result<Value, Error>>
+    },
 }
 
 impl Display for Value {
@@ -24,6 +28,7 @@ impl Display for Value {
             Value::Float(x) => write!(f, "{}", x),
             Value::String(x) => write!(f, "{}", x),
             Value::Bool(x) => write!(f, "{}", x),
+            Value::Callable{..} => write!(f, "FunctionObject"),
         }
     }
 }
@@ -34,8 +39,13 @@ pub struct Environment {
 
 impl Environment {
     pub fn new() -> Environment {
+        let mut globals = HashMap::new();
+        globals.insert("clock".to_string(), Value::Callable{arity: 0, func: Box::new(|_|{
+            let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
+            Ok(Value::Float(time))
+        })});
         Environment {
-            scopes: vec![HashMap::new()],
+            scopes: vec![globals],
         }
     }
 
@@ -55,7 +65,7 @@ pub struct Interpreter<'a> {
 
 impl<'a> ExpressionVisitor for Interpreter<'a> {
     type Item = Result<Value, Error>;
-    type Passthrough = &'a mut std::io::Write;
+    type Passthrough = &'a mut dyn std::io::Write;
     fn visit(&self, expr: &Expression, passthrough: Self::Passthrough) -> Self::Item {
         match expr {
             Expression::Statement(x) => self.statement_expression(x, passthrough),
@@ -78,6 +88,7 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
             Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
             Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
             Expression::While(cond, body) => self.while_loop(cond, body, passthrough),
+            Expression::Call(callee, args) => self.call(callee, args, passthrough),
         }
     }
 }
@@ -90,7 +101,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn interpret(&self, exprs: Vec<Expression>, out: &'a mut std::io::Write) -> Option<Error> {
+    pub fn interpret(&self, exprs: Vec<Expression>, out: &'a mut dyn std::io::Write) -> Option<Error> {
         for expr in exprs {
             if let Err(e) = self.visit(&expr, out) {
                 return Some(e);
@@ -109,11 +120,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn statement_expression(&self, expr: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn statement_expression(&self, expr: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         self.visit(expr, out)
     }
 
-    fn block_expression(&self, exprs: &Vec<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn block_expression(&self, exprs: &Vec<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         self.environment.borrow_mut().wrap();
         let mut last = Value::String("None type from block expression".to_string());
         for expr in exprs {
@@ -123,13 +134,13 @@ impl<'a> Interpreter<'a> {
         return Ok(last)
     }
 
-    fn print_expression(&self, expr: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn print_expression(&self, expr: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let v = self.visit(expr, out)?;
         writeln!(out, "{}", v);
         Ok(v)
     }
 
-    fn unary_value(&self, kind: &UnaryOperation, expr: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn unary_value(&self, kind: &UnaryOperation, expr: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let v = self.visit(expr, out)?;
         match kind {
             UnaryOperation::Not => match v {
@@ -144,7 +155,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn binary_value(&self, kind: &BinaryOperation, operands: &(Box<Expression>, Box<Expression>), out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn binary_value(&self, kind: &BinaryOperation, operands: &(Box<Expression>, Box<Expression>), out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let left = self.visit(&operands.0, out)?;
         let right = self.visit(&operands.1, out)?;
         match kind {
@@ -187,7 +198,7 @@ impl<'a> Interpreter<'a> {
         Ok(Value::String("THIS IS A NONE VALUE FROM SETTING VARIABLE".to_string()))
     }
 
-    fn if_cond(&self, cond: &Box<Expression>, yes: &Box<Expression>, no: &Option<Box<Expression>>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn if_cond(&self, cond: &Box<Expression>, yes: &Box<Expression>, no: &Option<Box<Expression>>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let cond_eval = self.visit(cond, out)?;
         if let Value::Bool(true) = cond_eval {
             self.visit(yes, out)
@@ -196,7 +207,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn while_loop(&self, cond: &Box<Expression>, body: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn while_loop(&self, cond: &Box<Expression>, body: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let mut result = Value::String("NONE VALUE FROM WHILE LOOP".to_string());
         loop {
             let eval = self.visit(cond, out)?;
@@ -209,7 +220,28 @@ impl<'a> Interpreter<'a> {
 
     }
 
-    fn logic_or(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn call(&self, callee: &Box<Expression>, args: &Vec<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
+        let callable = self.visit(callee, out)?;
+        let arguments_result: Result<Vec<Value>, Error> = args.iter().map(|arg|self.visit(arg, out)).collect();
+        match arguments_result {
+            Ok(args) => {
+                if let
+                Value::Callable { arity, func } =
+                callable {
+                    if arity == args.len() {
+                        func(args)
+                    } else {
+                        Err(self.err_build.create(0, 0, ErrorType::WrongNumberArgs))
+                    }
+                } else {
+                Err( self.err_build.create(0, 0, ErrorType::CallNonFunction))
+                }
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    fn logic_or(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let a_res = self.visit(a, out);
         if let Ok(Value::Bool(true)) = a_res {
             a_res
@@ -218,7 +250,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn logic_and(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut std::io::Write) -> Result<Value, Error> {
+    fn logic_and(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         let a_res = self.visit(a, out);
         if let Ok(Value::Bool(true)) = a_res {
             self.visit(b, out)
@@ -237,23 +269,27 @@ impl Add<Value> for Value {
                 Value::Float(f) => Ok(Value::Float(i as f64 + f)),
                 Value::String(s) => Ok(Value::String(i.to_string() + &s)),
                 Value::Bool(_) => Err(ErrorType::AddBool),
+                _ => Err(ErrorType::AddIncompatible),
             }
             Value::Float(f) => match rhs {
                 Value::Integer(i) => Ok(Value::Float(f + i as f64)),
                 Value::Float(f2) => Ok(Value::Float(f + f2)),
                 Value::String(s) => Ok(Value::String(f.to_string() + &s)),
                 Value::Bool(_) => Err(ErrorType::AddBool),
+                _ => Err(ErrorType::AddIncompatible),
             }
             Value::String(s) => match rhs {
                 Value::Integer(i) => Ok(Value::String(s + &i.to_string())),
                 Value::Float(f) => Ok(Value::String(s + &f.to_string())),
                 Value::String(s2) => Ok(Value::String(s + &s2)),
                 Value::Bool(b) => Ok(Value::String(s + &b.to_string())),
+                _ => Err(ErrorType::AddIncompatible),
             }
             Value::Bool(b) => match rhs {
                 Value::String(s) => Ok(Value::String(b.to_string() + &s)),
                 _ => Err(ErrorType::AddBool),
             }
+            _ => Err(ErrorType::AddIncompatible),
         }
     }
 }
