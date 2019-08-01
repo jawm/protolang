@@ -26,6 +26,7 @@ pub enum Expression {
     LogicAnd(Box<Expression>, Box<Expression>),
     While(Box<Expression>, Box<Expression>),
     Call(Box<Expression>, Vec<Expression>),
+    Function(Vec<Expression>, Box<Expression>),
 }
 
 impl Display for Expression {
@@ -63,6 +64,13 @@ impl Display for Expression {
                 write!(f, "{}(", callee);
                 for arg in args {
                     write!(f, "{}", arg);
+                }
+                write!(f, ")")
+            },
+            Expression:: Function(params, _) => {
+                write!(f, "Fn(");
+                for param in params {
+                    write!(f, "{},", param);
                 }
                 write!(f, ")")
             }

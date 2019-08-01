@@ -5,6 +5,7 @@ use std::fmt::{Binary, Formatter, Display, Debug};
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
 use std::cell::{RefCell, Ref, Cell};
+use std::rc::Rc;
 use core::borrow::Borrow;
 use std::collections::HashMap;
 //use itertools::Itertools;
@@ -15,10 +16,50 @@ pub enum Value {
     Float(f64),
     String(String),
     Bool(bool),
-    Callable {
-        arity: usize,
-        func: Box<fn(Vec<Value>)->Result<Value, Error>>
-    },
+    Callable(Rc<Callable>),
+}
+
+trait Callable: Debug {
+    fn arity(&self) -> usize;
+    fn call(&self, interpreter: &Interpreter, out: &mut dyn std::io::Write, args: Vec<Value>) -> Result<Value, Error>;
+}
+
+#[derive(Debug)]
+struct NativeFn {
+    arity: usize,
+    body: fn(Vec<Value>)->Result<Value,Error>
+}
+
+impl Callable for NativeFn {
+    fn arity(&self) -> usize {
+        return self.arity
+    }
+
+    fn call(&self, interpreter: &Interpreter, out: &mut dyn std::io::Write, args: Vec<Value>) -> Result<Value, Error> {
+        (self.body)(args)
+    }
+}
+
+#[derive(Debug)]
+struct RuntimeFn {
+    params: Vec<Expression>,
+    body: Box<Expression>
+}
+
+impl Callable for RuntimeFn {
+    fn arity(&self) -> usize {
+        self.params.len()
+    }
+    fn call(&self, interpreter: &Interpreter, out: &mut dyn std::io::Write, args: Vec<Value>) -> Result<Value, Error> {
+        let mut env = Environment::new(); // TODO this has the globals inserted. cancel that
+        for (param, arg) in self.params.iter().zip(args) {
+            // this should always be true
+            if let Expression::Variable(s) = param {
+                env.scopes[0].insert(s.to_string(), arg);
+            }
+        }
+        interpreter.visit(&self.body, out)
+    }
 }
 
 impl Display for Value {
@@ -40,10 +81,11 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Environment {
         let mut globals = HashMap::new();
-        globals.insert("clock".to_string(), Value::Callable{arity: 0, func: Box::new(|_|{
+        let clock = Value::Callable(Rc::new(NativeFn{arity: 0, body: |_|{
             let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            Ok(Value::Float(time))
-        })});
+             Ok(Value::Float(time))
+        }}));
+        globals.insert("clock".to_string(), clock);
         Environment {
             scopes: vec![globals],
         }
@@ -89,6 +131,7 @@ impl<'a> ExpressionVisitor for Interpreter<'a> {
             Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
             Expression::While(cond, body) => self.while_loop(cond, body, passthrough),
             Expression::Call(callee, args) => self.call(callee, args, passthrough),
+            Expression::Function(params, body) => self.function(params, body, passthrough),
         }
     }
 }
@@ -225,11 +268,9 @@ impl<'a> Interpreter<'a> {
         let arguments_result: Result<Vec<Value>, Error> = args.iter().map(|arg|self.visit(arg, out)).collect();
         match arguments_result {
             Ok(args) => {
-                if let
-                Value::Callable { arity, func } =
-                callable {
-                    if arity == args.len() {
-                        func(args)
+                if let Value::Callable(call) = callable {
+                    if call.arity() == args.len() {
+                        call.call(self, out, args)
                     } else {
                         Err(self.err_build.create(0, 0, ErrorType::WrongNumberArgs))
                     }
@@ -239,6 +280,28 @@ impl<'a> Interpreter<'a> {
             },
             Err(e) => Err(e),
         }
+    }
+
+    fn function(&self, params: &Vec<Expression>, body: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
+        Ok(Value::Callable(Rc::new(RuntimeFn{
+            params: params,
+            body: body,
+        })))
+//        return Ok(Value::Callable {
+//            arity: params.len(),
+//            func: Box::new(|args| {
+//                let mut env = Environment::new(); // TODO this has the globals inserted. cancel that
+//                for param in params {
+//                    // this should always be true
+//                    if let Expression::Variable(s) = param {
+//
+////                        env.scopes[0].insert()
+//
+//                    }
+//                }
+//                self.visit(body, out)
+//            })
+//        })
     }
 
     fn logic_or(&self, a: &Box<Expression>, b: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {

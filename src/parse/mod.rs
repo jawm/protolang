@@ -37,8 +37,6 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                 exprs.push(expr);
                 break;
             }
-            exprs.push(expr);
-            break;
         }
         Ok(exprs)
     }
@@ -82,12 +80,44 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         return self.assign();
     }
 
+    fn function(&mut self) -> Result<expression::Expression, Error> {
+        if let Some(Token {token_type: TokenType::Fn, ..}) = self.tokens.peek() {
+            self.tokens.next();
+            if let Some(Token {token_type: TokenType::LeftParen, ..}) = self.tokens.next() {
+                // parse arguments
+                let mut params = vec![];
+                loop {
+                    match self.tokens.next() {
+                        Some(Token { token_type: TokenType::Identifier(s), .. }) => {
+                            params.push(Expression::Variable(s.to_string()));
+                            match self.tokens.next() {
+                                Some(Token { token_type: TokenType::Comma, .. }) => continue,
+                                Some(Token { token_type: TokenType::RightParen, .. }) => break,
+                                n => return Err(self.err_build.create(0, 1, ErrorType::ParamFollowup))
+                            }
+                        },
+                        Some(Token { token_type: TokenType::RightParen, .. }) => break,
+                        Some(n) => return Err(self.err_build.create(n.location, 1, ErrorType::ParamIdent)),
+                        None => return Err(self.err_build.create(0, 0, ErrorType::UnexpectedEOF)),
+                    }
+                }
+                let block = self.block()?;
+                return Ok(Expression::Function(params, Box::new(block)))
+            } else {
+                return Err(self.err_build.create(0, 0, ErrorType::MissingParams))
+            }
+            self.print()
+        } else {
+            self.print()
+        }
+    }
+
     fn assign(&mut self) -> Result<expression::Expression, Error> {
         let nonlocal = if let Some(Token {token_type: TokenType::NonLocal, ..}) = self.tokens.peek() {
             self.tokens.next();
             true
         } else {false};
-        let mut l = self.print()?;
+        let mut l = self.function()?;
         if let Some(Token {token_type: TokenType::Equal, ..}) = self.tokens.peek() {
             self.tokens.next();
             let right = self.assign()?;

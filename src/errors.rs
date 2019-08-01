@@ -17,6 +17,9 @@ pub enum ErrorType {
     InvalidAssignment,
     ConditionGrouping, // condition in if statement must be surrounded by brackets
     MissingRightParen,
+    ParamFollowup, // Parameter must be followed either by comma or right paren
+    ParamIdent, // Parameter should be an identifier
+    MissingParams, // Function didn't have parameters
 
     // Interpreting errors
     InterpretUnaryMinus,

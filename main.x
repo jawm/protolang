@@ -60,5 +60,9 @@ while (count < 10) {
     print count;
 };
 
-
 print clock();
+
+add = fn (hello, world) 1 + 2;
+print add;
+print add(1, 2);
+print 1 + 2;
