@@ -51,14 +51,16 @@ impl Callable for RuntimeFn {
         self.params.len()
     }
     fn call(&self, interpreter: &Interpreter, out: &mut dyn std::io::Write, args: Vec<Value>) -> Result<Value, Error> {
-        let mut env = Environment::new(); // TODO this has the globals inserted. cancel that
+        interpreter.environment.borrow_mut().wrap();
         for (param, arg) in self.params.iter().zip(args) {
             // this should always be true
             if let Expression::Variable(s) = param {
-                env.scopes[0].insert(s.to_string(), arg);
+                interpreter.environment.borrow_mut().scopes[0].insert(s.to_string(), arg);
             }
         }
-        interpreter.visit(&self.body, out)
+        let result = interpreter.visit(&self.body, out);
+        interpreter.environment.borrow_mut().unwrap();
+        return result;
     }
 }
 
@@ -85,7 +87,12 @@ impl Environment {
             let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
              Ok(Value::Float(time))
         }}));
+        let print = Value::Callable(Rc::new(NativeFn{arity: 1, body: |mut args| {
+            println!("{}", args[0]);
+            Ok(args.remove(0))
+        }}));
         globals.insert("clock".to_string(), clock);
+        globals.insert("puts".to_string(), print);
         Environment {
             scopes: vec![globals],
         }
@@ -284,8 +291,8 @@ impl<'a> Interpreter<'a> {
 
     fn function(&self, params: &Vec<Expression>, body: &Box<Expression>, out: &'a mut dyn std::io::Write) -> Result<Value, Error> {
         Ok(Value::Callable(Rc::new(RuntimeFn{
-            params: params,
-            body: body,
+            params: params.to_vec(),
+            body: body.clone(),
         })))
 //        return Ok(Value::Callable {
 //            arity: params.len(),

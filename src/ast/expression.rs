@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter, Error, Binary};
 use std::convert::TryFrom;
 use crate::lex::tokens::{Token, TokenType};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Variable(String),
     Statement(Box<Expression>),
@@ -90,7 +90,7 @@ pub trait ExpressionVisitor {
     fn visit(&self, expr: &Expression, passthrough: Self::Passthrough) -> Self::Item;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Literal {
     Integer(i64),
     Float(f64),
@@ -111,7 +111,7 @@ impl Display for Literal {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOperation {
     Not,
     Minus
@@ -135,7 +135,7 @@ impl TryFrom<&Token> for UnaryOperation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOperation {
     Equals,
     NotEquals,
