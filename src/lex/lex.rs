@@ -1,9 +1,9 @@
 use super::tokens::Token;
-use std::str::Chars;
-use core::borrow::Borrow;
+use crate::errors::{Error, ErrorBuilder, ErrorType};
 use crate::lex::tokens::TokenType;
+use core::borrow::Borrow;
 use std::iter::{Enumerate, Peekable};
-use crate::errors::{ErrorBuilder, Error, ErrorType};
+use std::str::Chars;
 
 pub struct Lexer<'a> {
     chars: Peekable<Enumerate<Chars<'a>>>,
@@ -14,17 +14,23 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str, err_build: &'a ErrorBuilder) -> Lexer<'a> {
         Lexer {
             chars: input.chars().enumerate().peekable(),
-            err_build
+            err_build,
         }
     }
 
-    fn peek_match(&mut self, idx: usize, matcher: char, positive: TokenType, negative: TokenType) -> Option<Result<Token, Error>> {
+    fn peek_match(
+        &mut self,
+        idx: usize,
+        matcher: char,
+        positive: TokenType,
+        negative: TokenType,
+    ) -> Option<Result<Token, Error>> {
         match self.chars.peek() {
             Some((_, x)) if *x == matcher => {
                 self.chars.next();
                 Token::new(idx, positive)
-            },
-            _ => Token::new(idx, negative)
+            }
+            _ => Token::new(idx, negative),
         }
     }
 
@@ -34,9 +40,15 @@ impl<'a> Lexer<'a> {
             match self.chars.next() {
                 Some((_, '"')) => {
                     return Token::new(idx, TokenType::String(s));
-                },
+                }
                 Some((_, c)) => s.push(c),
-                None => return Some(Err(self.err_build.create(idx, 1, ErrorType::UnterminatedString)))
+                None => {
+                    return Some(Err(self.err_build.create(
+                        idx,
+                        1,
+                        ErrorType::UnterminatedString,
+                    )))
+                }
             }
         }
     }
@@ -58,7 +70,7 @@ impl<'a> Lexer<'a> {
         loop {
             match self.chars.peek() {
                 Some((_, c)) if c.is_ascii_alphanumeric() => n.push(*c),
-                _ => return keyword_matcher(idx, &n)
+                _ => return keyword_matcher(idx, &n),
             }
             self.chars.next();
         }
@@ -73,20 +85,32 @@ impl<'a> Lexer<'a> {
                 Some((_, digit)) if digit.is_numeric() => n.push(*digit),
                 Some((_, '.')) => {
                     if is_float {
-                        break Some(Err(self.err_build.create(idx, 1, ErrorType::NumberWithTrailingDot)))
+                        break Some(Err(self.err_build.create(
+                            idx,
+                            1,
+                            ErrorType::NumberWithTrailingDot,
+                        )));
                     }
                     is_float = true;
                     n.push('.');
                     self.chars.next();
                     match self.chars.peek() {
                         Some((_, digit)) if digit.is_numeric() => continue,
-                        _ => break Some(Err(self.err_build.create(idx, 1, ErrorType::NumberWithTrailingDot)))
+                        _ => {
+                            break Some(Err(self.err_build.create(
+                                idx,
+                                1,
+                                ErrorType::NumberWithTrailingDot,
+                            )))
+                        }
                     }
                 }
-                _ => break if is_float {
-                    Token::new(idx, TokenType::Float(n.parse::<f64>().unwrap()))
-                } else {
-                    Token::new(idx, TokenType::Integer(n.parse::<i64>().unwrap()))
+                _ => {
+                    break if is_float {
+                        Token::new(idx, TokenType::Float(n.parse::<f64>().unwrap()))
+                    } else {
+                        Token::new(idx, TokenType::Integer(n.parse::<i64>().unwrap()))
+                    }
                 }
             }
             self.chars.next();
@@ -113,7 +137,7 @@ impl<'a> Iterator for Lexer<'a> {
             '+' => Token::new(idx, TokenType::Plus),
             '/' => Token::new(idx, TokenType::Slash),
             '*' => Token::new(idx, TokenType::Star),
-            '\''=> Token::new(idx, TokenType::Apostrophe),
+            '\'' => Token::new(idx, TokenType::Apostrophe),
             '!' => self.peek_match(idx, '=', TokenType::BangEqual, TokenType::Bang),
             '=' => self.peek_match(idx, '=', TokenType::EqualEqual, TokenType::Equal),
             '>' => self.peek_match(idx, '=', TokenType::GreaterEqual, TokenType::Greater),
@@ -121,25 +145,32 @@ impl<'a> Iterator for Lexer<'a> {
             '"' => self.match_string(idx),
             u if u.is_ascii_alphabetic() => self.read_ident(idx, u),
             u if u.is_numeric() => self.read_number(idx, u),
-            x => Some(Err(self.err_build.create(idx, 1, ErrorType::UnexpectedCharacter(x))))
+            x => Some(Err(self.err_build.create(
+                idx,
+                1,
+                ErrorType::UnexpectedCharacter(x),
+            ))),
         })
     }
 }
 
-fn keyword_matcher(idx: usize, s: &str) -> Option<Result<Token,Error>> {
-    Token::new(idx, match s {
-        "import" => TokenType::Import,
-        "nonlocal" => TokenType::NonLocal,
-        "and" => TokenType::And,
-        "else" => TokenType::Else,
-        "false" => TokenType::False,
-        "true" => TokenType::True,
-        "fn" => TokenType::Fn,
-        "for" => TokenType::For,
-        "if" => TokenType::If,
-        "while" => TokenType::While,
-        "or" => TokenType::Or,
-        "return" => TokenType::Return,
-        _ => TokenType::Identifier(s.to_string())
-    })
+fn keyword_matcher(idx: usize, s: &str) -> Option<Result<Token, Error>> {
+    Token::new(
+        idx,
+        match s {
+            "import" => TokenType::Import,
+            "nonlocal" => TokenType::NonLocal,
+            "and" => TokenType::And,
+            "else" => TokenType::Else,
+            "false" => TokenType::False,
+            "true" => TokenType::True,
+            "fn" => TokenType::Fn,
+            "for" => TokenType::For,
+            "if" => TokenType::If,
+            "while" => TokenType::While,
+            "or" => TokenType::Or,
+            "return" => TokenType::Return,
+            _ => TokenType::Identifier(s.to_string()),
+        },
+    )
 }

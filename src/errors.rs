@@ -1,5 +1,5 @@
-use crate::lex::tokens::{Token, TokenType};
 use crate::interpreter::Value;
+use crate::lex::tokens::{Token, TokenType};
 
 #[derive(Debug)]
 pub enum ErrorType {
@@ -18,7 +18,7 @@ pub enum ErrorType {
     ConditionGrouping, // condition in if statement must be surrounded by brackets
     MissingRightParen,
     ParamFollowup, // Parameter must be followed either by comma or right paren
-    ParamIdent, // Parameter should be an identifier
+    ParamIdent,    // Parameter should be an identifier
     MissingParams, // Function didn't have parameters
 
     // Interpreting errors
@@ -40,7 +40,7 @@ pub struct Error {
     location: usize,
     length: usize,
     input_name: String,
-    input_string: String
+    input_string: String,
 }
 
 pub struct ErrorBuilder {
@@ -52,7 +52,7 @@ impl ErrorBuilder {
     pub fn new(input_name: String, input_string: String) -> ErrorBuilder {
         ErrorBuilder {
             input_name,
-            input_string
+            input_string,
         }
     }
 

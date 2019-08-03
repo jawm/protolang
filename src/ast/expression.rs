@@ -1,7 +1,7 @@
-use std::fmt;
-use std::fmt::{Display, Formatter, Error, Binary};
-use std::convert::TryFrom;
 use crate::lex::tokens::{Token, TokenType};
+use std::convert::TryFrom;
+use std::fmt;
+use std::fmt::{Binary, Display, Error, Formatter};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
@@ -10,13 +10,13 @@ pub enum Expression {
     Block(Vec<Expression>),
     Print(Box<Expression>),
     Literal(Literal),
-    Unary{
+    Unary {
         kind: UnaryOperation,
-        expr: Box<Expression>
+        expr: Box<Expression>,
     },
-    Binary{
+    Binary {
         kind: BinaryOperation,
-        operands: (Box<Expression>, Box<Expression>)
+        operands: (Box<Expression>, Box<Expression>),
     },
     Grouping(Box<Expression>),
     NonLocalAssign(String, Box<Expression>),
@@ -40,13 +40,13 @@ impl Display for Expression {
                     write!(f, "{}", expr)?;
                 }
                 write!(f, "}}")
-            },
+            }
             Expression::Print(expr) => write!(f, "print {}", expr),
-            Expression::Literal(l) => {
-                write!(f, "{}", l)
-            },
-            Expression::Unary{kind,expr} => write!(f, "{}{}", kind, expr),
-            Expression::Binary{kind,operands} => write!(f, "({} {} {})", kind, operands.0, operands.1),
+            Expression::Literal(l) => write!(f, "{}", l),
+            Expression::Unary { kind, expr } => write!(f, "{}{}", kind, expr),
+            Expression::Binary { kind, operands } => {
+                write!(f, "({} {} {})", kind, operands.0, operands.1)
+            }
             Expression::Grouping(expr) => write!(f, "({})", expr),
             Expression::NonLocalAssign(name, expr) => write!(f, "nonlocal {}={}", name, expr),
             Expression::Assign(name, expr) => write!(f, "{}={}", name, expr),
@@ -56,7 +56,7 @@ impl Display for Expression {
                 } else {
                     write!(f, "if ({}) {}", cond, yes)
                 }
-            },
+            }
             Expression::LogicOr(a, b) => write!(f, "{} || {}", a, b),
             Expression::LogicAnd(a, b) => write!(f, "{} && {}", a, b),
             Expression::While(cond, body) => write!(f, "while ({}) {}", cond, body),
@@ -66,8 +66,8 @@ impl Display for Expression {
                     write!(f, "{}", arg);
                 }
                 write!(f, ")")
-            },
-            Expression:: Function(params, _) => {
+            }
+            Expression::Function(params, _) => {
                 write!(f, "Fn(");
                 for param in params {
                     write!(f, "{},", param);
@@ -79,7 +79,7 @@ impl Display for Expression {
 }
 
 impl Expression {
-    pub fn accept<T>(&self, visitor: impl ExpressionVisitor<Passthrough=T>, passthrough: T) {
+    pub fn accept<T>(&self, visitor: impl ExpressionVisitor<Passthrough = T>, passthrough: T) {
         visitor.visit(self, passthrough);
     }
 }
@@ -96,7 +96,7 @@ pub enum Literal {
     Float(f64),
     String(String),
     True,
-    False
+    False,
 }
 
 impl Display for Literal {
@@ -106,7 +106,7 @@ impl Display for Literal {
             Literal::Float(fl) => write!(f, "{}", fl),
             Literal::String(s) => write!(f, "\"{}\"", s),
             Literal::True => write!(f, "true"),
-            Literal::False => write!(f, "false")
+            Literal::False => write!(f, "false"),
         }
     }
 }
@@ -114,7 +114,7 @@ impl Display for Literal {
 #[derive(Debug, Clone)]
 pub enum UnaryOperation {
     Not,
-    Minus
+    Minus,
 }
 
 impl Display for UnaryOperation {
@@ -130,7 +130,7 @@ impl TryFrom<&Token> for UnaryOperation {
         match kind {
             TokenType::Minus => Ok(UnaryOperation::Minus),
             TokenType::Bang => Ok(UnaryOperation::Not),
-            _ => Err("The token passed didn't represent a unary operation")
+            _ => Err("The token passed didn't represent a unary operation"),
         }
     }
 }
@@ -146,22 +146,22 @@ pub enum BinaryOperation {
     Plus,
     Minus,
     Multiply,
-    Divide
+    Divide,
 }
 
 impl Display for BinaryOperation {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             BinaryOperation::Equals => write!(f, "=="),
-            BinaryOperation::NotEquals=> write!(f, "!="),
-            BinaryOperation::LessThan=> write!(f, "<"),
-            BinaryOperation::LessOrEqual=> write!(f, "<="),
-            BinaryOperation::GreaterThan=> write!(f, ">"),
-            BinaryOperation::GreaterOrEqual=> write!(f, ">="),
-            BinaryOperation::Plus=> write!(f, "+"),
-            BinaryOperation::Minus=> write!(f, "-"),
-            BinaryOperation::Multiply=> write!(f, "*"),
-            BinaryOperation::Divide=> write!(f, "/")
+            BinaryOperation::NotEquals => write!(f, "!="),
+            BinaryOperation::LessThan => write!(f, "<"),
+            BinaryOperation::LessOrEqual => write!(f, "<="),
+            BinaryOperation::GreaterThan => write!(f, ">"),
+            BinaryOperation::GreaterOrEqual => write!(f, ">="),
+            BinaryOperation::Plus => write!(f, "+"),
+            BinaryOperation::Minus => write!(f, "-"),
+            BinaryOperation::Multiply => write!(f, "*"),
+            BinaryOperation::Divide => write!(f, "/"),
         }
     }
 }
@@ -181,7 +181,10 @@ impl TryFrom<&Token> for BinaryOperation {
             TokenType::GreaterEqual => Ok(BinaryOperation::GreaterOrEqual),
             TokenType::Lesser => Ok(BinaryOperation::LessThan),
             TokenType::LesserEqual => Ok(BinaryOperation::LessOrEqual),
-            x => Err(format!("The token passed didn't represent a binary operation: {:?}", x))
+            x => Err(format!(
+                "The token passed didn't represent a binary operation: {:?}",
+                x
+            )),
         }
     }
 }

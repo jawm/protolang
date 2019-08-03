@@ -1,9 +1,9 @@
 use crate::ast::expression;
-use crate::errors::{ErrorBuilder, Error, ErrorType};
-use crate::lex::tokens::{Token, TokenType};
-use std::iter::Peekable;
-use std::convert::TryInto;
 use crate::ast::expression::Expression;
+use crate::errors::{Error, ErrorBuilder, ErrorType};
+use crate::lex::tokens::{Token, TokenType};
+use std::convert::TryInto;
+use std::iter::Peekable;
 
 pub struct Parser<'a, T: Iterator<Item = &'a Token>> {
     tokens: Peekable<T>,
@@ -32,7 +32,11 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                 continue;
             } else if self.tokens.peek().is_some() {
                 let next = self.tokens.next().unwrap();
-                return Err(self.err_build.create(next.location, 0, ErrorType::UnexpectedToken(next.token_type.clone())));
+                return Err(self.err_build.create(
+                    next.location,
+                    0,
+                    ErrorType::UnexpectedToken(next.token_type.clone()),
+                ));
             } else {
                 exprs.push(expr);
                 break;
@@ -47,7 +51,11 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
 
     fn statement(&mut self) -> Result<expression::Expression, Error> {
         let mut expr = self.expression()?;
-        if let Some(Token {token_type: TokenType::SemiColon, ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::SemiColon,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
             Ok(expression::Expression::Statement(Box::new(expr)))
         } else {
@@ -56,20 +64,27 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn block(&mut self) -> Result<expression::Expression, Error> {
-        if let Some(Token {token_type: TokenType::LeftBrace, ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::LeftBrace,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
             let mut exprs = vec![];
             loop {
                 match self.tokens.peek() {
                     None => return Err(self.err_build.create(0, 0, ErrorType::MissingRightBrace)),
-                    Some(Token{token_type: TokenType::RightBrace, ..}) => break,
+                    Some(Token {
+                        token_type: TokenType::RightBrace,
+                        ..
+                    }) => break,
                     _ => {
                         let expr = self.statement()?;
                         if let Expression::Statement(_) = expr {
                             exprs.push(expr);
                         } else {
                             exprs.push(expr);
-                            break
+                            break;
                         }
                     }
                 }
@@ -81,30 +96,58 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn function(&mut self) -> Result<expression::Expression, Error> {
-        if let Some(Token {token_type: TokenType::Fn, ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::Fn,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
-            if let Some(Token {token_type: TokenType::LeftParen, ..}) = self.tokens.next() {
+            if let Some(Token {
+                token_type: TokenType::LeftParen,
+                ..
+            }) = self.tokens.next()
+            {
                 // parse arguments
                 let mut params = vec![];
                 loop {
                     match self.tokens.next() {
-                        Some(Token { token_type: TokenType::Identifier(s), .. }) => {
+                        Some(Token {
+                            token_type: TokenType::Identifier(s),
+                            ..
+                        }) => {
                             params.push(Expression::Variable(s.to_string()));
                             match self.tokens.next() {
-                                Some(Token { token_type: TokenType::Comma, .. }) => continue,
-                                Some(Token { token_type: TokenType::RightParen, .. }) => break,
-                                n => return Err(self.err_build.create(0, 1, ErrorType::ParamFollowup))
+                                Some(Token {
+                                    token_type: TokenType::Comma,
+                                    ..
+                                }) => continue,
+                                Some(Token {
+                                    token_type: TokenType::RightParen,
+                                    ..
+                                }) => break,
+                                n => {
+                                    return Err(self.err_build.create(
+                                        0,
+                                        1,
+                                        ErrorType::ParamFollowup,
+                                    ))
+                                }
                             }
-                        },
-                        Some(Token { token_type: TokenType::RightParen, .. }) => break,
-                        Some(n) => return Err(self.err_build.create(n.location, 1, ErrorType::ParamIdent)),
+                        }
+                        Some(Token {
+                            token_type: TokenType::RightParen,
+                            ..
+                        }) => break,
+                        Some(n) => {
+                            return Err(self.err_build.create(n.location, 1, ErrorType::ParamIdent))
+                        }
                         None => return Err(self.err_build.create(0, 0, ErrorType::UnexpectedEOF)),
                     }
                 }
                 let block = self.block()?;
-                return Ok(Expression::Function(params, Box::new(block)))
+                return Ok(Expression::Function(params, Box::new(block)));
             } else {
-                return Err(self.err_build.create(0, 0, ErrorType::MissingParams))
+                return Err(self.err_build.create(0, 0, ErrorType::MissingParams));
             }
             self.print()
         } else {
@@ -113,12 +156,22 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn assign(&mut self) -> Result<expression::Expression, Error> {
-        let nonlocal = if let Some(Token {token_type: TokenType::NonLocal, ..}) = self.tokens.peek() {
+        let nonlocal = if let Some(Token {
+            token_type: TokenType::NonLocal,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
             true
-        } else {false};
+        } else {
+            false
+        };
         let mut l = self.function()?;
-        if let Some(Token {token_type: TokenType::Equal, ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::Equal,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
             let right = self.assign()?;
             if let Expression::Variable(name) = l {
@@ -127,17 +180,25 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
                 }
                 return Ok(Expression::Assign(name, Box::new(right)));
             } else {
-                return Err(self.err_build.create(0, 0, ErrorType::InvalidAssignment))
+                return Err(self.err_build.create(0, 0, ErrorType::InvalidAssignment));
             }
         } else if nonlocal {
-            return Err(self.err_build.create(0, 0, ErrorType::UnexpectedToken(TokenType::NonLocal)))
+            return Err(self.err_build.create(
+                0,
+                0,
+                ErrorType::UnexpectedToken(TokenType::NonLocal),
+            ));
         }
         Ok(l)
     }
 
     // TODO remove print statement in favour of a function for various reasons
     fn print(&mut self) -> Result<expression::Expression, Error> {
-        if let Some(Token {token_type: TokenType::Identifier(ident), ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::Identifier(ident),
+            ..
+        }) = self.tokens.peek()
+        {
             if ident == "print" {
                 self.tokens.next();
                 return Ok(expression::Expression::Print(Box::new(self.if_cond()?)));
@@ -147,32 +208,51 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     fn if_cond(&mut self) -> Result<Expression, Error> {
-        if let Some(Token {token_type: TokenType::If, ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::If,
+            ..
+        }) = self.tokens.peek()
+        {
             let token = self.tokens.next().unwrap();
             if let Ok(Expression::Grouping(expr)) = self.primary() {
                 let yes = self.expression()?;
-                if let Some(Token{token_type: TokenType::Else, ..}) = self.tokens.peek() {
+                if let Some(Token {
+                    token_type: TokenType::Else,
+                    ..
+                }) = self.tokens.peek()
+                {
                     self.tokens.next();
                     let no = self.expression()?;
                     return Ok(Expression::If(expr, Box::new(yes), Some(Box::new(no))));
                 }
                 return Ok(Expression::If(expr, Box::new(yes), None));
             } else {
-                return Err(self.err_build.create(token.location + 1, 1, ErrorType::ConditionGrouping));
+                return Err(self.err_build.create(
+                    token.location + 1,
+                    1,
+                    ErrorType::ConditionGrouping,
+                ));
             }
-
         }
         self.while_loop()
     }
 
     fn while_loop(&mut self) -> Result<Expression, Error> {
-        if let Some(Token {token_type: TokenType::While, ..}) = self.tokens.peek() {
+        if let Some(Token {
+            token_type: TokenType::While,
+            ..
+        }) = self.tokens.peek()
+        {
             let token = self.tokens.next().unwrap();
             if let Ok(Expression::Grouping(expr)) = self.primary() {
                 let body = self.expression()?;
                 return Ok(Expression::While(expr, Box::new(body)));
             } else {
-                return Err(self.err_build.create(token.location + 1, 1, ErrorType::ConditionGrouping));
+                return Err(self.err_build.create(
+                    token.location + 1,
+                    1,
+                    ErrorType::ConditionGrouping,
+                ));
             }
         }
         self.logic_or()
@@ -180,7 +260,11 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
 
     fn logic_or(&mut self) -> Result<Expression, Error> {
         let mut expr = self.logic_and()?;
-        while let Some(Token{token_type: TokenType::Or, ..}) = self.tokens.peek() {
+        while let Some(Token {
+            token_type: TokenType::Or,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
             let right = self.logic_and()?;
             expr = Expression::LogicOr(Box::new(expr), Box::new(right));
@@ -190,7 +274,11 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
 
     fn logic_and(&mut self) -> Result<Expression, Error> {
         let mut expr = self.equality()?;
-        while let Some(Token{token_type: TokenType::And, ..}) = self.tokens.peek() {
+        while let Some(Token {
+            token_type: TokenType::And,
+            ..
+        }) = self.tokens.peek()
+        {
             self.tokens.next();
             let right = self.equality()?;
             expr = Expression::LogicAnd(Box::new(expr), Box::new(right));
@@ -198,21 +286,24 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         Ok(expr)
     }
 
-    fn binary_helper(&mut self, matcher: impl Fn(&TokenType)->bool, left: expression::Expression, right: fn(&mut Parser<'a, T>)->Result<expression::Expression, Error>) -> Result<expression::Expression, Error> {
+    fn binary_helper(
+        &mut self,
+        matcher: impl Fn(&TokenType) -> bool,
+        left: expression::Expression,
+        right: fn(&mut Parser<'a, T>) -> Result<expression::Expression, Error>,
+    ) -> Result<expression::Expression, Error> {
         let mut expr = left;
         loop {
             match self.tokens.peek() {
-                Some(Token { token_type: x, .. })
-                if matcher(x) =>
-                    {
-                        let token = self.tokens.next().unwrap().try_into().unwrap();
-                        let expr_right = right(self);
-                        expr = expression::Expression::Binary {
-                            kind: token,
-                            operands: (Box::new(expr), Box::new(expr_right?))
-                        };
-                    },
-                _ => break
+                Some(Token { token_type: x, .. }) if matcher(x) => {
+                    let token = self.tokens.next().unwrap().try_into().unwrap();
+                    let expr_right = right(self);
+                    expr = expression::Expression::Binary {
+                        kind: token,
+                        operands: (Box::new(expr), Box::new(expr_right?)),
+                    };
+                }
+                _ => break,
             }
         }
         Ok(expr)
@@ -220,44 +311,71 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
 
     fn equality(&mut self) -> Result<expression::Expression, Error> {
         let expr = self.comparison()?;
-        self.binary_helper(|x|*x == TokenType::BangEqual || *x == TokenType::EqualEqual, expr, Parser::comparison)
+        self.binary_helper(
+            |x| *x == TokenType::BangEqual || *x == TokenType::EqualEqual,
+            expr,
+            Parser::comparison,
+        )
     }
 
     fn comparison(&mut self) -> Result<expression::Expression, Error> {
         let expr = self.addition()?;
-        self.binary_helper(|x| *x == TokenType::Greater || *x == TokenType::GreaterEqual || *x == TokenType::Lesser || *x == TokenType::LesserEqual, expr, Parser::addition)
+        self.binary_helper(
+            |x| {
+                *x == TokenType::Greater
+                    || *x == TokenType::GreaterEqual
+                    || *x == TokenType::Lesser
+                    || *x == TokenType::LesserEqual
+            },
+            expr,
+            Parser::addition,
+        )
     }
 
     fn addition(&mut self) -> Result<expression::Expression, Error> {
         let expr = self.multiplication()?;
-        self.binary_helper(|x| *x == TokenType::Minus || *x == TokenType::Plus, expr, Parser::multiplication)
+        self.binary_helper(
+            |x| *x == TokenType::Minus || *x == TokenType::Plus,
+            expr,
+            Parser::multiplication,
+        )
     }
 
     fn multiplication(&mut self) -> Result<expression::Expression, Error> {
         let expr = self.unary()?;
-        self.binary_helper(|x| *x == TokenType::Slash || *x == TokenType::Star, expr, Parser::unary)
+        self.binary_helper(
+            |x| *x == TokenType::Slash || *x == TokenType::Star,
+            expr,
+            Parser::unary,
+        )
     }
 
     fn unary(&mut self) -> Result<expression::Expression, Error> {
         match self.tokens.peek() {
-            Some(Token{token_type: x, ..}) if *x == TokenType::Bang || *x == TokenType::Minus => {
+            Some(Token { token_type: x, .. })
+                if *x == TokenType::Bang || *x == TokenType::Minus =>
+            {
                 Ok(expression::Expression::Unary {
                     kind: self.tokens.next().unwrap().try_into().unwrap(),
-                    expr: Box::new(self.unary()?)
+                    expr: Box::new(self.unary()?),
                 })
-            },
-            _ => self.call()
+            }
+            _ => self.call(),
         }
     }
 
     fn call(&mut self) -> Result<Expression, Error> {
         let mut expr = self.primary()?;
         loop {
-            if let Some(Token{ token_type: TokenType::LeftParen, ..}) = self.tokens.peek() {
+            if let Some(Token {
+                token_type: TokenType::LeftParen,
+                ..
+            }) = self.tokens.peek()
+            {
                 self.tokens.next();
                 expr = self.finish_call(expr)?;
             } else {
-                break
+                break;
             }
         }
         Ok(expr)
@@ -265,11 +383,19 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
 
     fn finish_call(&mut self, expr: Expression) -> Result<Expression, Error> {
         let mut args = vec![];
-        if let Some(Token{token_type: TokenType::RightParen, ..}) = self.tokens.peek() {}
-        else {
+        if let Some(Token {
+            token_type: TokenType::RightParen,
+            ..
+        }) = self.tokens.peek()
+        {
+        } else {
             loop {
                 args.push(self.expression()?);
-                if let Some(Token{token_type: TokenType::Comma, ..}) = self.tokens.peek() {
+                if let Some(Token {
+                    token_type: TokenType::Comma,
+                    ..
+                }) = self.tokens.peek()
+                {
                     self.tokens.next();
                 } else {
                     break;
@@ -277,8 +403,13 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
             }
         }
         match self.tokens.next() {
-            Some(Token{token_type: TokenType::RightParen, ..}) => Ok(Expression::Call(Box::new(expr), args)),
-            Some(tok) => Err(self.err_build.create(tok.location, 0, ErrorType::MissingRightParen)),
+            Some(Token {
+                token_type: TokenType::RightParen,
+                ..
+            }) => Ok(Expression::Call(Box::new(expr), args)),
+            Some(tok) => Err(self
+                .err_build
+                .create(tok.location, 0, ErrorType::MissingRightParen)),
             None => Err(self.err_build.create(0, 0, ErrorType::UnexpectedEOF)),
         }
     }
@@ -288,23 +419,38 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
             match &token.token_type {
                 TokenType::True => Ok(expression::Expression::Literal(expression::Literal::True)),
                 TokenType::False => Ok(expression::Expression::Literal(expression::Literal::False)),
-                TokenType::Integer(i)=> Ok(expression::Expression::Literal(expression::Literal::Integer(*i))),
-                TokenType::Float(f) => Ok(expression::Expression::Literal(expression::Literal::Float(*f))),
-                TokenType::String(s) => Ok(expression::Expression::Literal(expression::Literal::String(s.to_string()))),
+                TokenType::Integer(i) => Ok(expression::Expression::Literal(
+                    expression::Literal::Integer(*i),
+                )),
+                TokenType::Float(f) => Ok(expression::Expression::Literal(
+                    expression::Literal::Float(*f),
+                )),
+                TokenType::String(s) => Ok(expression::Expression::Literal(
+                    expression::Literal::String(s.to_string()),
+                )),
                 TokenType::LeftParen => {
                     let expr = self.expression()?;
-                    if let Some(Token{token_type: TokenType::RightParen, ..}) = self.tokens.next() {
+                    if let Some(Token {
+                        token_type: TokenType::RightParen,
+                        ..
+                    }) = self.tokens.next()
+                    {
                         Ok(expression::Expression::Grouping(Box::new(expr)))
                     } else {
-                        Err(self.err_build.create(token.location, 1, ErrorType::UnclosedParen))
+                        Err(self
+                            .err_build
+                            .create(token.location, 1, ErrorType::UnclosedParen))
                     }
-                },
+                }
                 TokenType::Identifier(s) => Ok(Expression::Variable(s.to_string())),
-                x => Err(self.err_build.create(token.location, 1, ErrorType::UnexpectedToken(x.clone())))
+                x => Err(self.err_build.create(
+                    token.location,
+                    1,
+                    ErrorType::UnexpectedToken(x.clone()),
+                )),
             }
         } else {
             Err(self.err_build.create(0, 0, ErrorType::UnexpectedEOF))
         }
-
     }
 }

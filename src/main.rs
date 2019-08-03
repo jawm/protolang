@@ -1,15 +1,17 @@
 #![feature(exclusive_range_pattern)]
 #![feature(duration_float)]
+#![feature(in_band_lifetimes)]
 
 extern crate clap;
-extern crate wasm_bindgen;
 extern crate js_sys;
+extern crate wasm_bindgen;
 use clap::{App, Arg, SubCommand};
-use wasm_bindgen::prelude::*;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
-use std::{fs, io};
 use std::str;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{fs, io};
+use wasm_bindgen::prelude::*;
 
 mod errors;
 use errors::ErrorBuilder;
@@ -49,20 +51,34 @@ fn main() {
 
 #[wasm_bindgen]
 pub fn run_wasm(input: &str, output: &js_sys::Function) {
-    struct Writer<'a> {output: &'a js_sys::Function}
+    struct Writer<'a> {
+        output: &'a js_sys::Function,
+    }
     impl<'a> std::io::Write for Writer<'a> {
         fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-            self.output.call1(&JsValue::NULL, &JsValue::from(str::from_utf8(buf).unwrap()));
-            return Ok(buf.len())
+            self.output
+                .call1(&JsValue::NULL, &JsValue::from(str::from_utf8(buf).unwrap()));
+            return Ok(buf.len());
         }
 
         fn flush(&mut self) -> Result<(), std::io::Error> {
             Ok(())
         }
     }
-    let mut w = Writer{output};
+    let mut w = Writer { output };
+
     let err_build = &ErrorBuilder::new("repl".to_string(), format!("Error in input"));
-    run(input.to_string(), err_build, &mut Interpreter::new(err_build), &mut w);
+
+    let mut ext = External {
+        output: &mut w,
+        clock: js_sys::Date::now,
+    };
+    run(
+        input.to_string(),
+        err_build,
+        &mut Interpreter::new(err_build),
+        &mut ext,
+    );
 }
 
 fn run_file(file: &str) {
@@ -72,7 +88,15 @@ fn run_file(file: &str) {
         contents,
         x,
         &Interpreter::new(x),
-        &mut std::io::stdout()
+        &mut External {
+            output: &mut std::io::stdout(),
+            clock: || {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs_f64()
+            },
+        },
     );
 }
 
@@ -91,16 +115,36 @@ fn run_prompt() {
             line,
             err_build,
             interpreter,
-            &mut std::io::stdout()
+            &mut External {
+                output: &mut std::io::stdout(),
+                clock: || {
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f64()
+                },
+            },
         );
     }
 }
 
-fn run<'a, T: std::io::Write>(input: String, err_build: &ErrorBuilder, interpreter: &'a Interpreter<'a>, out: &'a mut T) {
+struct External<'a> {
+    output: &'a mut std::io::Write,
+    clock: fn() -> f64,
+}
+
+fn run<'a>(
+    input: String,
+    err_build: &ErrorBuilder,
+    interpreter: &'a Interpreter<'a>,
+    ext: &'a mut External<'a>,
+) {
     let (tokens, errors): (Vec<Result<Token, Error>>, Vec<Result<Token, Error>>) =
         Lexer::new(&input, err_build).partition(Result::is_ok);
     if errors.len() > 0 {
-        errors.iter().for_each(|e| writeln!(out, "{:?}", e).unwrap_or(()));
+        errors
+            .iter()
+            .for_each(|e| writeln!(ext.output, "{:?}", e).unwrap_or(()));
         return;
     }
     let tokens = tokens.into_iter().map(Result::unwrap).collect::<Vec<_>>();
@@ -108,12 +152,12 @@ fn run<'a, T: std::io::Write>(input: String, err_build: &ErrorBuilder, interpret
     match parser.parse() {
         Ok(x) => {
             println!("{:?}", x);
-            if let Some(e) = interpreter.interpret(x, out) {
-                writeln!(out, "{:?}", e);
+            if let Some(e) = interpreter.interpret(x, ext) {
+                //                writeln!(ext.output, "{:?}", e);
             }
-        },
+        }
         Err(e) => {
-            writeln!(out, "{:?}", e);
-        },
+            writeln!(ext.output, "{:?}", e);
+        }
     }
 }
