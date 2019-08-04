@@ -210,10 +210,10 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn interpret<'x>(
+    pub fn interpret<'x, 'pt>(
         &'x self,
         exprs: Vec<Expression>,
-        out: &'x mut External<'x>,
+        out: &'x mut External<'pt>,
     ) -> Option<Error> {
         for expr in exprs {
             if let Err(e) = self.visit(&expr, out) {

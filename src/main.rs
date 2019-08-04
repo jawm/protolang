@@ -133,10 +133,10 @@ struct External<'a> {
     clock: fn() -> f64,
 }
 
-fn run<'a>(
+fn run<'a, 'x, 's>(
     input: String,
     err_build: &ErrorBuilder,
-    interpreter: &'a Interpreter<'a>,
+    interpreter: &'a Interpreter<'s>,
     ext: &'a mut External<'a>,
 ) {
     let (tokens, errors): (Vec<Result<Token, Error>>, Vec<Result<Token, Error>>) =
@@ -151,9 +151,9 @@ fn run<'a>(
     let mut parser = Parser::new(tokens.iter(), err_build);
     match parser.parse() {
         Ok(x) => {
-            println!("{:?}", x);
+//            println!("{:?}", x);
             if let Some(e) = interpreter.interpret(x, ext) {
-                //                writeln!(ext.output, "{:?}", e);
+                writeln!(ext.output, "{:?}", e);
             }
         }
         Err(e) => {
