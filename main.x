@@ -1,9 +1,7 @@
-x = 10;
-
-abc = fn () {
-    nonlocal x = 5;
+hello = fn() {
+    return "hello world";
+    print "after the return"
 };
 
-abc();
-
-print x;
+adder = hello();
+print adder;

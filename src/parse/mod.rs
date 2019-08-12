@@ -193,7 +193,7 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
     }
 
     // TODO remove print statement in favour of a function for various reasons
-    fn print(&mut self) -> Result<expression::Expression, Error> {
+    fn print(&mut self) -> Result<Expression, Error> {
         if let Some(Token {
             token_type: TokenType::Identifier(ident),
             ..
@@ -201,7 +201,23 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         {
             if ident == "print" {
                 self.tokens.next();
-                return Ok(expression::Expression::Print(Box::new(self.if_cond()?)));
+                return Ok(Expression::Print(Box::new(self.retn()?)));
+            }
+        }
+        self.retn()
+    }
+
+    fn retn(&mut self) -> Result<Expression, Error> {
+        if let Some(Token {
+                        token_type: TokenType::Return,
+                        ..
+                    }) = self.tokens.peek()
+        {
+            self.tokens.next();
+            if let Some(Token {token_type: TokenType::SemiColon, ..}) = self.tokens.peek() {
+                return Ok(Expression::Return(None))
+            } else {
+                return Ok(Expression::Return(Some(Box::new(self.if_cond()?))));
             }
         }
         self.if_cond()

@@ -9,10 +9,48 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Binary, Debug, Display, Formatter};
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Sub, Try};
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
-//use itertools::Itertools;
+
+enum ExprResult {
+    Value(Value),
+    ControlFlow(ControlFlowConstruct),
+    Err(Error),
+}
+
+enum ExprError {
+    ControlFlow(ControlFlowConstruct),
+    Err(Error)
+}
+
+enum ControlFlowConstruct {
+    Return(Option<Value>)
+}
+
+impl Try for ExprResult {
+    type Ok = Value;
+    type Error = ExprError;
+
+    fn into_result(self) -> Result<Self::Ok, Self::Error> {
+        match self {
+            ExprResult::Value(v) => Ok(v),
+            ExprResult::ControlFlow(c) => Err(ExprError::ControlFlow(c)),
+            ExprResult::Err(e) => Err(ExprError::Err(e))
+        }
+    }
+
+    fn from_error(v: Self::Error) -> Self {
+        match v {
+            ExprError::ControlFlow(c) => ExprResult::ControlFlow(c),
+            ExprError::Err(e) => ExprResult::Err(e)
+        }
+    }
+
+    fn from_ok(v: Self::Ok) -> Self {
+        ExprResult::Value(v)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -30,12 +68,12 @@ trait Callable: Debug {
         interpreter: &'a Interpreter<'a>,
         out: &'a mut External<'pt>,
         args: Vec<Value>,
-    ) -> Result<Value, Error>;
+    ) -> ExprResult;
 }
 
 struct NativeFn {
     arity: usize,
-    body: fn(Vec<Value>, interpreter: &Interpreter, out: &mut External) -> Result<Value, Error>,
+    body: fn(Vec<Value>, interpreter: &Interpreter, out: &mut External) -> ExprResult,
 }
 
 impl Debug for NativeFn {
@@ -54,7 +92,7 @@ impl Callable for NativeFn {
         interpreter: &Interpreter,
         out: &mut External,
         args: Vec<Value>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         (self.body)(args, interpreter, out)
     }
 }
@@ -74,7 +112,7 @@ impl Callable for RuntimeFn {
         interpreter: &Interpreter,
         out: &mut External,
         args: Vec<Value>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         interpreter.environment.borrow_mut().wrap();
         for (param, arg) in self.params.iter().zip(args) {
             // this should always be true
@@ -111,14 +149,14 @@ impl Environment {
             arity: 0,
             body: |_, _, ext| {
                 let time = (ext.clock)();
-                Ok(Value::Float(time))
+                ExprResult::Value(Value::Float(time))
             },
         }));
         let print = Value::Callable(Rc::new(NativeFn {
             arity: 1,
             body: |mut args, _, out| {
                 write!(out.output, "{}\n", args[0]);
-                Ok(args.remove(0))
+                ExprResult::Value(args.remove(0))
             },
         }));
         globals.insert("clock".to_string(), clock);
@@ -142,45 +180,14 @@ pub struct Interpreter<'a> {
     pub environment: RefCell<Environment>,
 }
 
-//
-//impl<'a, 's> ExpressionVisitor<'s> for Interpreter<'a> {
-//    type Item = Result<Value, Error>;
-//    type Passthrough = &'s mut External<'s>;
-//    fn visit(&'s self, expr: &Expression, passthrough: Self::Passthrough) -> Self::Item {
-//        match expr {
-//            Expression::Statement(x) => self.statement_expression(x, passthrough),
-//            Expression::Block(exprs) => self.block_expression(exprs, passthrough),
-//            Expression::Print(x) => self.print_expression(x, passthrough),
-//            Expression::Literal(x) => Ok(self.literal_value(x)),
-//            Expression::Unary { kind, expr } => self.unary_value(kind, expr, passthrough),
-//            Expression::Binary { kind, operands } => self.binary_value(kind, operands, passthrough),
-//            Expression::Grouping(e) => self.visit(e, passthrough),
-//            Expression::Variable(s) => self.get_var(s),
-//            Expression::Assign(s, expr) => {
-//                let val = self.visit(expr, passthrough)?;
-//                self.set_var(s, val)
-//            }
-//            Expression::NonLocalAssign(s, expr) => {
-//                let val = self.visit(expr, passthrough)?;
-//                self.set_nonlocal(s, val)
-//            }
-//            Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough),
-//            Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
-//            Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
-//            Expression::While(cond, body) => self.while_loop(cond, body, passthrough),
-//            Expression::Call(callee, args) => self.call(callee, args, passthrough),
-//            Expression::Function(params, body) => self.function(params, body, passthrough),
-//        }
-//    }
-//}
 
 impl<'a> Interpreter<'a> {
-    fn visit<'s, 'x>(&'s self, expr: &Expression, passthrough: &'s mut External<'x>) -> Result<Value, Error> {
+    fn visit<'s, 'x>(&'s self, expr: &Expression, passthrough: &'s mut External<'x>) -> ExprResult {
         match expr {
             Expression::Statement(x) => self.statement_expression(x, passthrough),
             Expression::Block(exprs) => self.block_expression(exprs, passthrough),
             Expression::Print(x) => self.print_expression(x, passthrough),
-            Expression::Literal(x) => Ok(self.literal_value(x)),
+            Expression::Literal(x) => ExprResult::Value(self.literal_value(x)),
             Expression::Unary { kind, expr } => self.unary_value(kind, expr, passthrough),
             Expression::Binary { kind, operands } => self.binary_value(kind, operands, passthrough),
             Expression::Grouping(e) => self.visit(e, passthrough),
@@ -199,6 +206,7 @@ impl<'a> Interpreter<'a> {
             Expression::While(cond, body) => self.while_loop(cond, body, passthrough),
             Expression::Call(callee, args) => self.call(callee, args, passthrough),
             Expression::Function(params, body) => self.function(params, body, passthrough),
+            Expression::Return(e) => self.retn(e, passthrough),
         }
     }
 
@@ -216,7 +224,7 @@ impl<'a> Interpreter<'a> {
         out: &'x mut External<'pt>,
     ) -> Option<Error> {
         for expr in exprs {
-            if let Err(e) = self.visit(&expr, out) {
+            if let ExprResult::Err(e) = self.visit(&expr, out) {
                 return Some(e);
             }
         }
@@ -237,7 +245,7 @@ impl<'a> Interpreter<'a> {
         &'s self,
         expr: &Box<Expression>,
         out: &'s mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         self.visit(expr, out)
     }
 
@@ -245,24 +253,24 @@ impl<'a> Interpreter<'a> {
         &'pt self,
         exprs: &Vec<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         self.environment.borrow_mut().wrap();
         let mut last = Value::String("None type from block expression".to_string());
         for expr in exprs {
             last = self.visit(expr, out)?
         }
         self.environment.borrow_mut().unwrap();
-        return Ok(last);
+        return ExprResult::Value(last);
     }
 
     fn print_expression<'pt, 'x>(
         &'pt self,
         expr: &Box<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let v = self.visit(expr, out)?;
         writeln!(out.output, "{}", v);
-        Ok(v)
+        ExprResult::Value(v)
     }
 
     fn unary_value<'pt, 'x>(
@@ -270,19 +278,19 @@ impl<'a> Interpreter<'a> {
         kind: &UnaryOperation,
         expr: &Box<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let v = self.visit(expr, out)?;
         match kind {
             UnaryOperation::Not => match v {
-                Value::Bool(b) => Ok(Value::Bool(!b)),
-                v => Err(self
+                Value::Bool(b) => ExprResult::Value(Value::Bool(!b)),
+                v => ExprResult::Err(self
                     .err_build
                     .create(0, 0, ErrorType::InterpretBooleanNotWrongType)),
             },
             UnaryOperation::Minus => match v {
-                Value::Integer(i) => Ok(Value::Integer(-i)),
-                Value::Float(f) => Ok(Value::Float(-f)),
-                v => Err(self.err_build.create(0, 0, ErrorType::InterpretUnaryMinus)),
+                Value::Integer(i) => ExprResult::Value(Value::Integer(-i)),
+                Value::Float(f) => ExprResult::Value(Value::Float(-f)),
+                v => ExprResult::Err(self.err_build.create(0, 0, ErrorType::InterpretUnaryMinus)),
             },
         }
     }
@@ -292,10 +300,10 @@ impl<'a> Interpreter<'a> {
         kind: &BinaryOperation,
         operands: &(Box<Expression>, Box<Expression>),
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let left = self.visit(&operands.0, out)?;
         let right = self.visit(&operands.1, out)?;
-        match kind {
+        match match kind {
             BinaryOperation::Plus => left + right,
             BinaryOperation::Equals => Ok(Value::Bool(left == right)),
             BinaryOperation::NotEquals => Ok(Value::Bool(left != right)),
@@ -306,36 +314,38 @@ impl<'a> Interpreter<'a> {
             BinaryOperation::Minus => left - right,
             BinaryOperation::Multiply => left * right,
             BinaryOperation::Divide => left / right,
+        } {
+            Ok(v) => ExprResult::Value(v),
+            Err(e) => ExprResult::Err(self.err_build.create(0, 0, e)),
         }
-        .map_err(|e| self.err_build.create(0, 0, e))
     }
 
-    fn get_var(&self, s: &str) -> Result<Value, Error> {
+    fn get_var(&self, s: &str) -> ExprResult {
         let scopes = &self.environment.borrow().scopes;
         for env in scopes {
             if env.contains_key(s) {
-                return Ok(env.get(s).unwrap().clone());
+                return ExprResult::Value(env.get(s).unwrap().clone());
             }
         }
-        Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
+        ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
     }
 
-    fn set_nonlocal(&self, s: &str, v: Value) -> Result<Value, Error> {
+    fn set_nonlocal(&self, s: &str, v: Value) -> ExprResult {
         let scopes = &mut self.environment.borrow_mut().scopes;
         for env in scopes {
             if env.contains_key(s) {
                 env.insert(s.to_string(), v);
-                return Ok(Value::String(
+                return ExprResult::Value(Value::String(
                     "THIS IS A NONE VALUE FROM SETTING NON LOCAL".to_string(),
                 ));
             }
         }
-        Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
+        ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
     }
 
-    fn set_var(&self, s: &str, v: Value) -> Result<Value, Error> {
+    fn set_var(&self, s: &str, v: Value) -> ExprResult {
         self.environment.borrow_mut().scopes[0].insert(s.to_string(), v);
-        Ok(Value::String(
+        ExprResult::Value(Value::String(
             "THIS IS A NONE VALUE FROM SETTING VARIABLE".to_string(),
         ))
     }
@@ -346,13 +356,13 @@ impl<'a> Interpreter<'a> {
         yes: &Box<Expression>,
         no: &Option<Box<Expression>>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let cond_eval = self.visit(cond, out)?;
         if let Value::Bool(true) = cond_eval {
             self.visit(yes, out)
         } else {
             no.as_ref().map_or(
-                Ok(Value::String(
+                ExprResult::Value(Value::String(
                     "PLACE HOLDER NONE VALUE FROM IF ELSE BRANCH".to_string(),
                 )),
                 |v| self.visit(&v, out),
@@ -365,14 +375,14 @@ impl<'a> Interpreter<'a> {
         cond: &Box<Expression>,
         body: &Box<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let mut result = Value::String("NONE VALUE FROM WHILE LOOP".to_string());
         loop {
             let eval = self.visit(cond, out)?;
             if let Value::Bool(true) = eval {
                 result = self.visit(body, out)?;
             } else {
-                return Ok(result);
+                return ExprResult::Value(result);
             }
         }
     }
@@ -382,7 +392,7 @@ impl<'a> Interpreter<'a> {
         callee: &Box<Expression>,
         args: &Vec<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let callable = self.visit(callee, out)?;
         let mut arguments_result = vec![];
         for arg in args {
@@ -390,20 +400,25 @@ impl<'a> Interpreter<'a> {
         }
         let arguments_result = Ok(arguments_result);
 
+        // TODO Rearrange this arguments thing
+
         //        let arguments_result: Result<Vec<Value>, Error> = args.iter().map(|arg|self.visit(arg, out)).collect();
         match arguments_result {
             Ok(args) => {
                 if let Value::Callable(call) = callable {
                     if call.arity() == args.len() {
-                        call.call(self, out, args)
+                        match call.call(self, out, args) {
+                            ExprResult::ControlFlow(ControlFlowConstruct::Return(x)) => ExprResult::Value(x.unwrap_or(Value::String("NONE RETURN FROM FUNCTION".to_string()))),
+                            x => x,
+                        }
                     } else {
-                        Err(self.err_build.create(0, 0, ErrorType::WrongNumberArgs))
+                        ExprResult::Err(self.err_build.create(0, 0, ErrorType::WrongNumberArgs))
                     }
                 } else {
-                    Err(self.err_build.create(0, 0, ErrorType::CallNonFunction))
+                    ExprResult::Err(self.err_build.create(0, 0, ErrorType::CallNonFunction))
                 }
             }
-            Err(e) => Err(e),
+            Err(e) => ExprResult::Err(e),
         }
     }
 
@@ -412,11 +427,26 @@ impl<'a> Interpreter<'a> {
         params: &Vec<Expression>,
         body: &Box<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
-        Ok(Value::Callable(Rc::new(RuntimeFn {
+    ) -> ExprResult {
+        // TODO the function needs to do closure stuff, which it doesn't right now :/
+        // Try to capture the environment in which the closure is created, and store alongside (betting lifetime issues arise)
+        ExprResult::Value(Value::Callable(Rc::new(RuntimeFn {
             params: params.to_vec(),
             body: body.clone(),
         })))
+    }
+
+    fn retn<'pt, 'x>(
+        &self,
+        expr: &Option<Box<Expression>>,
+        out: &'pt mut External<'x>,
+    ) -> ExprResult {
+        expr.as_ref()
+            .map(|e| match self.visit(e, out){
+                ExprResult::Value(v) => ExprResult::ControlFlow(ControlFlowConstruct::Return(Some(v))),
+                x => x,
+            })
+            .unwrap_or(ExprResult::ControlFlow(ControlFlowConstruct::Return(None)))
     }
 
     fn logic_or<'pt, 'x>(
@@ -424,9 +454,9 @@ impl<'a> Interpreter<'a> {
         a: &Box<Expression>,
         b: &Box<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let a_res = self.visit(a, out);
-        if let Ok(Value::Bool(true)) = a_res {
+        if let ExprResult::Value(Value::Bool(true)) = a_res {
             a_res
         } else {
             self.visit(b, out)
@@ -438,12 +468,12 @@ impl<'a> Interpreter<'a> {
         a: &Box<Expression>,
         b: &Box<Expression>,
         out: &'pt mut External<'x>,
-    ) -> Result<Value, Error> {
+    ) -> ExprResult {
         let a_res = self.visit(a, out);
-        if let Ok(Value::Bool(true)) = a_res {
+        if let ExprResult::Value(Value::Bool(true)) = a_res {
             self.visit(b, out)
         } else {
-            Ok(Value::Bool(false))
+            ExprResult::Value(Value::Bool(false))
         }
     }
 }

@@ -1,6 +1,7 @@
 #![feature(exclusive_range_pattern)]
 #![feature(duration_float)]
 #![feature(in_band_lifetimes)]
+#![feature(try_trait)]
 
 extern crate clap;
 extern crate js_sys;
