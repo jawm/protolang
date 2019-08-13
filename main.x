@@ -1,2 +1,3 @@
-ifelse = "123";
-print ifelse;
+insert = fn(excl self, move key, move value) {
+
+}

@@ -5,6 +5,9 @@
 
 extern crate clap;
 extern crate js_sys;
+extern crate pest;
+#[macro_use]
+extern crate pest_derive;
 extern crate wasm_bindgen;
 use clap::{App, Arg, SubCommand};
 use std::fs::File;
@@ -24,7 +27,7 @@ use lex::Lexer;
 
 mod parse;
 use crate::errors::Error;
-use parse::Parser;
+//use parse::Parser;
 
 use crate::ast::expression::ExpressionVisitor;
 use crate::interpreter::Interpreter;
@@ -47,6 +50,26 @@ fn main() {
         run_file(file);
     } else {
         run_prompt();
+    }
+}
+
+use pest::Parser;
+#[derive(Parser)]
+#[grammar = "grammar.pest"]
+pub struct WaveParser;
+
+fn pest_parse(input: &str) {
+    let unparsed_file = fs::read_to_string(input).expect("Input should be a valid filename");
+    let parsed = WaveParser::parse(Rule::file, &unparsed_file).expect("Syntax should be valid")
+        .next().unwrap(); // we can unwrap here, since if the result is Ok, then it must contain the rule we asked for.
+    println!("{:?}", parsed);
+    for record in parsed.into_inner() {
+        match record.as_rule() {
+            Rule::expression => {
+                println!("{:?}", record);
+            },
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -83,22 +106,23 @@ pub fn run_wasm(input: &str, output: &js_sys::Function) {
 }
 
 fn run_file(file: &str) {
-    let contents = fs::read_to_string(file).expect("Something went wrong reading the file");
-    let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
-    run(
-        contents,
-        x,
-        &Interpreter::new(x),
-        &mut External {
-            output: &mut std::io::stdout(),
-            clock: || {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs_f64()
-            },
-        },
-    );
+    pest_parse(file);
+//    let contents = fs::read_to_string(file).expect("Something went wrong reading the file");
+//    let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
+//    run(
+//        contents,
+//        x,
+//        &Interpreter::new(x),
+//        &mut External {
+//            output: &mut std::io::stdout(),
+//            clock: || {
+//                SystemTime::now()
+//                    .duration_since(UNIX_EPOCH)
+//                    .unwrap()
+//                    .as_secs_f64()
+//            },
+//        },
+//    );
 }
 
 fn run_prompt() {
@@ -140,25 +164,25 @@ fn run<'a, 'x, 's>(
     interpreter: &'a Interpreter<'s>,
     ext: &'a mut External<'a>,
 ) {
-    let (tokens, errors): (Vec<Result<Token, Error>>, Vec<Result<Token, Error>>) =
-        Lexer::new(&input, err_build).partition(Result::is_ok);
-    if errors.len() > 0 {
-        errors
-            .iter()
-            .for_each(|e| writeln!(ext.output, "{:?}", e).unwrap_or(()));
-        return;
-    }
-    let tokens = tokens.into_iter().map(Result::unwrap).collect::<Vec<_>>();
-    let mut parser = Parser::new(tokens.iter(), err_build);
-    match parser.parse() {
-        Ok(x) => {
-//            println!("{:?}", x);
-            if let Some(e) = interpreter.interpret(x, ext) {
-                writeln!(ext.output, "{:?}", e);
-            }
-        }
-        Err(e) => {
-            writeln!(ext.output, "{:?}", e);
-        }
-    }
+//    let (tokens, errors): (Vec<Result<Token, Error>>, Vec<Result<Token, Error>>) =
+//        Lexer::new(&input, err_build).partition(Result::is_ok);
+//    if errors.len() > 0 {
+//        errors
+//            .iter()
+//            .for_each(|e| writeln!(ext.output, "{:?}", e).unwrap_or(()));
+//        return;
+//    }
+//    let tokens = tokens.into_iter().map(Result::unwrap).collect::<Vec<_>>();
+//    let mut parser = Parser::new(tokens.iter(), err_build);
+//    match parser.parse() {
+//        Ok(x) => {
+////            println!("{:?}", x);
+//            if let Some(e) = interpreter.interpret(x, ext) {
+//                writeln!(ext.output, "{:?}", e);
+//            }
+//        }
+//        Err(e) => {
+//            writeln!(ext.output, "{:?}", e);
+//        }
+//    }
 }

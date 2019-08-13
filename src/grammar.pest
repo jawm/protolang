@@ -22,7 +22,7 @@ keywords = @{
     ) ~ !(ASCII_ALPHANUMERIC | "_")
 }
 
-file = { SOI ~ multiple_expression ~ EOI }
+file = _{ SOI ~ multiple_expression ~ EOI }
 
 multiple_expression = !{ NEWLINE* ~ expression? ~ (NEWLINE+ ~ expression)* ~ NEWLINE* }
 
@@ -36,10 +36,12 @@ expression = !{
 
 block = { ("{" ~ multiple_expression ~ "}")}
 assign = { ident ~ "=" ~ expression }
-function = { "fn" ~ "(" ~ params? ~ ")" ~ signature_ret? ~ expression }
-params = { parameter ~ ("," ~ parameter)* }
+function = { "fn" ~ "(" ~ parameter_self? ~ params? ~ ")" ~ signature_ret? ~ expression }
+params = { ("," ~ parameter)* }
+parameter_self = ${ ("move " ~ ident_self) | ("excl "? ~ ident_self ~ ("'" ~ ident_self)?)}
 parameter = ${ ("move " ~ ident) | ("excl "? ~ ident ~ ("'" ~ ident)?)}
 signature_ret = { "->" ~ "return" }
+ident_self = { ident | "self" }
 ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 body_ret = ${ "return" ~ (" " ~ expression)? }
 
