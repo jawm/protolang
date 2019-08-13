@@ -18,6 +18,7 @@ keywords = @{
     "or" |
     "return" |
     "while" |
+    "self"
     ) ~ !(ASCII_ALPHANUMERIC | "_")
 }
 
@@ -36,7 +37,8 @@ expression = !{
 block = { ("{" ~ multiple_expression ~ "}")}
 assign = { ident ~ "=" ~ expression }
 function = { "fn" ~ "(" ~ params? ~ ")" ~ signature_ret? ~ expression }
-params = { variable ~ ("," ~ variable)* }
+params = { parameter ~ ("," ~ parameter)* }
+parameter = ${ ("move " ~ ident) | ("excl "? ~ ident ~ ("'" ~ ident)?)}
 signature_ret = { "->" ~ "return" }
 ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 body_ret = ${ "return" ~ (" " ~ expression)? }
