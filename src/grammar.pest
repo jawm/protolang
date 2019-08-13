@@ -3,21 +3,21 @@ COMMENT    = _{ "#" ~ (!NEWLINE~ANY)* ~ NEWLINE}
 
 keywords = @{
 	(
-    "if" |
-    "else" |
-    "while" |
-    "return" |
-    "fn" |
+    "and" |
     "break" |
     "continue" |
-    "and" |
-    "or" |
-    "for" |
-    "in" |
-    "import" |
-    "nonlocal" |
+    "else" |
     "excl" |
-    "move"
+    "fn" |
+    "for" |
+    "if" |
+    "import" |
+    "in" |
+    "move" |
+    "nonlocal" |
+    "or" |
+    "return" |
+    "while" |
     ) ~ !(ASCII_ALPHANUMERIC | "_")
 }
 
