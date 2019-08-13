@@ -21,7 +21,7 @@ keywords = @{
 
 file = { SOI ~ multiple_expression ~ EOI }
 
-multiple_expression = !{ (NEWLINE* ~ expression)* ~ NEWLINE? }
+multiple_expression = !{ NEWLINE* ~ expression? ~ (NEWLINE+ ~ expression)* ~ NEWLINE* }
 
 expression = !{
 	block |
@@ -33,11 +33,11 @@ expression = !{
 
 block = { ("{" ~ multiple_expression ~ "}")}
 assign = { ident ~ "=" ~ expression }
-function = { "fn(" ~ params? ~ ")" ~ signature_ret? ~ expression }
+function = { "fn" ~ "(" ~ params? ~ ")" ~ signature_ret? ~ expression }
 params = { ident ~ ("," ~ ident)* }
 signature_ret = { "->" ~ "return" }
 ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-body_ret = { "return" ~ (" " ~ expression)? }
+body_ret = ${ "return" ~ (" " ~ expression)? }
 
 if_expr = {
 	"if" ~ expression ~ expression ~ ( "else" ~ expression )? |
