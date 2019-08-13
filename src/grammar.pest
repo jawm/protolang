@@ -1,19 +1,27 @@
 WHITESPACE = _{" "}
 COMMENT    = _{ "#" ~ (!NEWLINE~ANY)* ~ NEWLINE}
 
-keywords = {
-	"if" |
+keywords = @{
+	(
+    "if" |
     "else" |
     "while" |
     "return" |
     "fn" |
     "break" |
-    "continue"
+    "continue" |
+    "and" |
+    "or" |
+    "for" |
+    "in" |
+    "import" |
+    "nonlocal"
+    ) ~ !(ASCII_ALPHANUMERIC | "_")
 }
 
 file = { SOI ~ multiple_expression ~ EOI }
 
-multiple_expression = { (NEWLINE* ~ expression)* ~ NEWLINE? }
+multiple_expression = !{ (NEWLINE* ~ expression)* ~ NEWLINE? }
 
 expression = !{
 	block |
@@ -28,7 +36,7 @@ assign = { ident ~ "=" ~ expression }
 function = { "fn(" ~ params? ~ ")" ~ signature_ret? ~ expression }
 params = { ident ~ ("," ~ ident)* }
 signature_ret = { "->" ~ "return" }
-ident = !{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHA | NUMBER | "_")* }
+ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 body_ret = { "return" ~ (" " ~ expression)? }
 
 if_expr = {
@@ -65,9 +73,9 @@ primary = {
     variable
 }
 
-number = ${NUMBER+ ~ ("."~NUMBER+)?}
+number = @{NUMBER+ ~ ("."~NUMBER+)?}
 
-string = { "\"" ~ string_inner ~ "\"" }
+string = ${ "\"" ~ string_inner ~ "\"" }
 string_inner = {
 	(
     	(&"\\\"" ~ "\\\"") | // an escaped double quote
