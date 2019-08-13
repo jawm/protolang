@@ -15,7 +15,9 @@ keywords = @{
     "for" |
     "in" |
     "import" |
-    "nonlocal"
+    "nonlocal" |
+    "excl" |
+    "move"
     ) ~ !(ASCII_ALPHANUMERIC | "_")
 }
 
@@ -34,7 +36,7 @@ expression = !{
 block = { ("{" ~ multiple_expression ~ "}")}
 assign = { ident ~ "=" ~ expression }
 function = { "fn" ~ "(" ~ params? ~ ")" ~ signature_ret? ~ expression }
-params = { ident ~ ("," ~ ident)* }
+params = { variable ~ ("," ~ variable)* }
 signature_ret = { "->" ~ "return" }
 ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 body_ret = ${ "return" ~ (" " ~ expression)? }
@@ -85,4 +87,4 @@ string_inner = {
 
 boolean = { "true" | "false" }
 grouping = { "(" ~ expression ~ ")" }
-variable = { ident }
+variable = ${ ("move " | "excl ")? ~ ident }
