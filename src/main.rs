@@ -66,7 +66,7 @@ fn pest_parse(input: &str) {
     for record in parsed.into_inner() {
         match record.as_rule() {
             Rule::expression => {
-                println!("{:?}", record);
+                println!("{:?}", record.into_inner());
             },
             _ => unreachable!(),
         }
