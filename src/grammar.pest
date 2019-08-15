@@ -17,8 +17,7 @@ keywords = @{
     "nonlocal" |
     "or" |
     "return" |
-    "while" |
-    "self"
+    "while"
     ) ~ !(ASCII_ALPHANUMERIC | "_")
 }
 
@@ -36,38 +35,62 @@ expression = !{
 
 block = { ("{" ~ multiple_expression ~ "}")}
 assign = { ident ~ "=" ~ expression }
-function = { "fn" ~ "(" ~ parameter_self? ~ params? ~ ")" ~ signature_ret ~ expression }
-params = { ("," ~ parameter)* }
-parameter_self = ${ ("move " ~ ident_self) | ("excl "? ~ ident_self ~ ("'" ~ ident_self)?)}
-parameter = ${ ("move " ~ ident) | ("excl "? ~ ident ~ ("'" ~ ident)?)}
-signature_ret = !{ "_" | "move return" | "excl "? ~ "return" ~ ("'" ~ ident)? }
-ident_self = { ident | "self" }
+function = { "fn" ~ "(" ~ params? ~ ")" ~ signature_ret ~ expression }
+params = { parameter? ~ ("," ~ parameter)* }
+parameter = ${ shared_param | excl_param | move_param }
+shared_param = { ident ~ lifetime? }
+excl_param = { "excl " ~ ident ~ lifetime? }
+move_param = { "move " ~ ident }
+signature_ret = !{ no_return | shared_return | excl_return | move_return }
+no_return = { "_" }
+shared_return = { "return" ~ lifetime? }
+excl_return = { "excl return" ~ lifetime? }
+move_return = { "move return" }
+lifetime = { "'" ~ ident }
 ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 body_ret = ${ "return" ~ (" " ~ expression)? }
 
 if_expr = {
-	"if" ~ expression ~ expression ~ ( "else" ~ expression )? |
+	if_help |
     while_expr
 }
 
+if_help = { "if" ~ expression ~ expression ~ ( "else" ~ expression )? }
+
 while_expr = {
-	"while" ~ expression ~ expression |
+	while_help |
     logic_or
 }
 
-logic_or = {
-	logic_and ~ ("or" ~ logic_and)*
-}
+while_help = { "while" ~ expression ~ expression }
 
-logic_and = {
-	equality ~ ("and" ~ equality)*
-}
+logic_or = { logic_and ~ logic_or_help* }
+logic_or_help = { logic_or_op ~ logic_and }
+logic_or_op = { "or" }
 
-equality = {comparison ~ ( ("!=" | "==") ~ comparison)* }
-comparison = { addition ~ ( ( ">" | ">=" | "<" | "<=") ~ addition )* }
-addition = { multiplication ~ ( ( "+" | "-") ~ multiplication )* }
-multiplication = { unary ~ ( ( "*" | "/" ) ~ unary)* }
-unary = { ("!" | "-") ~ unary | call }
+logic_and = { equality ~ logic_and_help* }
+logic_and_help = { logic_and_op ~ equality }
+logic_and_op = { "and" }
+
+equality = {comparison ~ equality_help* }
+equality_help = { equality_op ~ comparison }
+equality_op = { "!=" | "==" }
+
+comparison = { addition ~ comparison_help* }
+comparison_help = { comparison_op ~ addition }
+comparison_op = { ">" | ">=" | "<" | "<=" }
+
+addition = { multiplication ~ addition_help* }
+addition_help = { addition_op ~ multiplication }
+addition_op = { "+" | "-" }
+
+multiplication = { unary ~ multiplication_help* }
+multiplication_help = { multiplication_op ~ unary }
+multiplication_op = { "*" | "/" }
+
+unary = { unary_op ~ unary | call }
+unary_op = { "!" | "-" }
+
 call = { primary ~ ("(" ~ args? ~ ")")? }
 args = { expression ~ ("," ~ expression)* }
 

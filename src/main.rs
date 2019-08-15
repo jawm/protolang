@@ -53,24 +53,9 @@ fn main() {
     }
 }
 
-use pest::Parser;
-#[derive(Parser)]
-#[grammar = "grammar.pest"]
-pub struct WaveParser;
-
 fn pest_parse(input: &str) {
     let unparsed_file = fs::read_to_string(input).expect("Input should be a valid filename");
-    let parsed = WaveParser::parse(Rule::file, &unparsed_file).expect("Syntax should be valid")
-        .next().unwrap(); // we can unwrap here, since if the result is Ok, then it must contain the rule we asked for.
-    println!("{:?}", parsed);
-    for record in parsed.into_inner() {
-        match record.as_rule() {
-            Rule::expression => {
-                println!("{:?}", record.into_inner());
-            },
-            _ => unreachable!(),
-        }
-    }
+    println!("{:?}", parse::parse(unparsed_file.as_ref()));
 }
 
 #[wasm_bindgen]

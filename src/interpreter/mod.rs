@@ -1,5 +1,5 @@
 use crate::ast::expression::{
-    BinaryOperation, Expression, ExpressionVisitor, Literal, UnaryOperation,
+    BinaryOperation, Expression, ExpressionVisitor, Literal, Param, UnaryOperation,
 };
 use crate::errors::{Error, ErrorBuilder, ErrorType};
 use crate::External;
@@ -99,7 +99,7 @@ impl Callable for NativeFn {
 
 #[derive(Debug)]
 struct RuntimeFn {
-    params: Vec<Expression>,
+    params: Vec<Param>,
     body: Box<Expression>,
 }
 
@@ -115,10 +115,7 @@ impl Callable for RuntimeFn {
     ) -> ExprResult {
         interpreter.environment.borrow_mut().wrap();
         for (param, arg) in self.params.iter().zip(args) {
-            // this should always be true
-            if let Expression::Variable(s) = param {
-                interpreter.environment.borrow_mut().scopes[0].insert(s.to_string(), arg);
-            }
+            interpreter.environment.borrow_mut().scopes[0].insert(param.ident.to_string(), arg);
         }
         let result = interpreter.visit(&self.body, out);
         interpreter.environment.borrow_mut().unwrap();
@@ -205,7 +202,7 @@ impl<'a> Interpreter<'a> {
             Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
             Expression::While(cond, body) => self.while_loop(cond, body, passthrough),
             Expression::Call(callee, args) => self.call(callee, args, passthrough),
-            Expression::Function(params, body) => self.function(params, body, passthrough),
+            Expression::Function(params, ret, body) => self.function(params, body, passthrough),
             Expression::Return(e) => self.retn(e, passthrough),
         }
     }
@@ -424,7 +421,7 @@ impl<'a> Interpreter<'a> {
 
     fn function<'pt, 'x>(
         &self,
-        params: &Vec<Expression>,
+        params: &Vec<Param>,
         body: &Box<Expression>,
         out: &'pt mut External<'x>,
     ) -> ExprResult {

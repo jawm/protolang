@@ -26,7 +26,7 @@ pub enum Expression {
     LogicAnd(Box<Expression>, Box<Expression>),
     While(Box<Expression>, Box<Expression>),
     Call(Box<Expression>, Vec<Expression>),
-    Function(Vec<Expression>, Box<Expression>),
+    Function(Vec<Param>, Option<Return>, Box<Expression>),
     Return(Option<Box<Expression>>),
 }
 
@@ -68,12 +68,16 @@ impl Display for Expression {
                 }
                 write!(f, ")")
             },
-            Expression::Function(params, _) => {
+            Expression::Function(params, ret, _) => {
                 write!(f, "Fn(");
                 for param in params {
                     write!(f, "{},", param);
                 }
-                write!(f, ")")
+                write!(f, ")");
+                if let Some(r) = ret {
+                    write!(f, " {}", r);
+                }
+                write!(f, " _")
             },
             Expression::Return(Some(expr)) => write!(f, "return {}", expr),
             Expression::Return(None) => write!(f, "return"),
@@ -138,6 +142,16 @@ impl TryFrom<&Token> for UnaryOperation {
     }
 }
 
+impl From<&str> for UnaryOperation {
+    fn from(value: &str) -> UnaryOperation {
+        match value {
+            "-" => UnaryOperation::Minus,
+            "!" => UnaryOperation::Not,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum BinaryOperation {
     Equals,
@@ -188,6 +202,79 @@ impl TryFrom<&Token> for BinaryOperation {
                 "The token passed didn't represent a binary operation: {:?}",
                 x
             )),
+        }
+    }
+}
+
+impl From<&str> for BinaryOperation {
+    fn from(value: &str) -> BinaryOperation {
+        match value {
+            "-" => BinaryOperation::Minus,
+            "+" => BinaryOperation::Plus,
+            "/" => BinaryOperation::Divide,
+            "*" => BinaryOperation::Multiply,
+            "!=" => BinaryOperation::NotEquals,
+            "==" => BinaryOperation::Equals,
+            ">" => BinaryOperation::GreaterThan,
+            ">=" => BinaryOperation::GreaterOrEqual,
+            "<" => BinaryOperation::LessThan,
+            "<=" => BinaryOperation::LessOrEqual,
+            _ => unreachable!()
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub ident: String,
+    pub lifetime: Option<String>,
+    pub access_type: AccessType,
+}
+
+impl Display for Param {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match &self.access_type {
+            AccessType::Shared => {},
+            x => {write!(f, "{} ", x)?},
+        };
+        write!(f, "{}", self.ident)?;
+        if let Some(x) = &self.lifetime {
+            write!(f, "'{}", x)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Return {
+    pub lifetime: Option<String>,
+    pub access_type: AccessType
+}
+
+impl Display for Return {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{} ", self.access_type);
+        write!(f, "return");
+        if let Some(l) = &self.lifetime {
+            write!(f, "'{}", l);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AccessType {
+    Move,
+    Excl,
+    Shared,
+}
+
+impl Display for AccessType {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            AccessType::Move => write!(f, "move"),
+            AccessType::Excl => write!(f, "excl"),
+            _ => Ok(()),
         }
     }
 }

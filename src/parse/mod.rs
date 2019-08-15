@@ -1,9 +1,234 @@
 use crate::ast::expression;
-use crate::ast::expression::Expression;
+use crate::ast::expression::{Expression, AccessType, Return};
+use crate::ast::expression::Param;
 use crate::errors::{Error, ErrorBuilder, ErrorType};
 use crate::lex::tokens::{Token, TokenType};
 use std::convert::TryInto;
 use std::iter::Peekable;
+use pest::Parser;
+use pest::iterators::{Pairs, Pair};
+use wasm_bindgen::__rt::core::hint::unreachable_unchecked;
+use wasm_bindgen::__rt::std::process::exit;
+
+#[derive(Parser)]
+#[grammar = "grammar.pest"]
+pub struct WaveParser;
+
+pub fn parse(input: &str) -> Result<Vec<Expression>, Error>{
+    let parsed = WaveParser::parse(Rule::file, input).expect("Syntax should be valid")
+        .next().unwrap(); // we can unwrap here, since if the result is Ok, then it must contain the rule we asked for.
+    match_multiple_exprs(parsed.into_inner())
+}
+
+fn match_multiple_exprs(pairs: Pairs<Rule>) -> Result<Vec<Expression>, Error> {
+    let mut exprs = vec![];
+    for record in pairs {
+        if let Rule::expression = record.as_rule() {
+            exprs.push(match_expression(record)?);
+        } else {
+            unreachable!();
+        }
+    }
+    Ok(exprs)
+}
+
+fn match_expression(pair: Pair<Rule>) -> Result<Expression, Error> {
+    let pair = pair.into_inner().next().unwrap();
+    match pair.as_rule() {
+        Rule::block => Ok(Expression::Block(match_multiple_exprs(pair.into_inner().next().unwrap().into_inner())?)),
+        Rule::assign => match_assign(pair.into_inner()),
+        Rule::function => match_function(pair.into_inner()),
+        Rule::body_ret => match_return(pair.into_inner()),
+        Rule::if_expr => match_if(pair.into_inner()),
+        x => unreachable!(),
+    }
+}
+
+fn match_assign(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let ident = pairs.next().unwrap();
+    let expr = match_expression(pairs.next().unwrap())?;
+    Ok(Expression::Assign(ident.as_str().to_string(), Box::new(expr)))
+}
+
+fn match_function(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let mut params = vec![];
+    let mut n = pairs.next().unwrap();
+    if let Rule::params = n.as_rule() {
+
+        for p in n.into_inner() {
+            let param = p.into_inner().next().unwrap();
+            let access_type = match param.as_rule() {
+                Rule::shared_param => AccessType::Shared,
+                Rule::excl_param => AccessType::Excl,
+                Rule::move_param => AccessType::Move,
+                _ => unreachable!()
+            };
+            let mut inner = param.into_inner();
+            let name = inner.next().unwrap();
+            let mut lifetime = None;
+            if let Some(lt) = inner.next() {
+                lifetime = Some(lt.into_inner().next().unwrap().as_str().to_string());
+            }
+            params.push(Param {
+                ident: name.as_str().to_string(),
+                lifetime: lifetime,
+                access_type: access_type,
+            })
+        }
+
+        n = pairs.next().unwrap();
+    }
+    // At this point, n *must* be a signature_ret
+    let ret = n.into_inner().next().unwrap();
+    let return_type = match ret.as_rule() {
+        Rule::no_return => None,
+        Rule::shared_return => {
+            let mut lifetime_param = None;
+            if let Some(lifetime) = ret.into_inner().next() {
+                lifetime_param = Some(lifetime.into_inner().next().unwrap().as_str().to_string());
+            }
+            Some(Return{
+                lifetime: lifetime_param,
+                access_type: AccessType::Shared,
+            })
+        },
+        Rule::excl_return => {
+            let mut lifetime_param = None;
+            if let Some(lifetime) = ret.into_inner().next() {
+                lifetime_param = Some(lifetime.into_inner().next().unwrap().as_str().to_string());
+            }
+            Some(Return{
+                lifetime: lifetime_param,
+                access_type: AccessType::Excl,
+            })
+        },
+        Rule::move_return => Some(Return{
+            lifetime: None,
+            access_type: AccessType::Move
+        }),
+        _ => unreachable!()
+    };
+
+    // Now we need the body of the function:
+    let body = match_expression(pairs.next().unwrap())?;
+
+    Ok(Expression::Function(params, return_type, Box::new(body)))
+}
+
+fn match_return(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    Ok(Expression::Return(
+        if let Some(e) = pairs.next() {
+            Some(Box::new(match_expression(e)?))
+        } else {
+            None
+        }
+    ))
+}
+
+fn match_if(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let n = pairs.next().unwrap();
+    if let Rule::if_help = n.as_rule() {
+        let mut if_expr = n.into_inner();
+        let condition = match_expression(if_expr.next().unwrap())?;
+        let body = match_expression(if_expr.next().unwrap())?;
+        let mut else_body = None;
+        if let Some(el) = if_expr.next() {
+            else_body = Some(Box::new(match_expression(el)?));
+        }
+        Ok(Expression::If(Box::new(condition), Box::new(body), else_body))
+
+    } else {
+        match_while(n.into_inner())
+    }
+}
+
+fn match_while(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let n = pairs.next().unwrap();
+    if let Rule::while_help = n.as_rule() {
+        let mut if_expr = n.into_inner();
+        let condition = match_expression(if_expr.next().unwrap())?;
+        let body = match_expression(if_expr.next().unwrap())?;
+        Ok(Expression::While(Box::new(condition), Box::new(body)))
+    } else {
+        match_or(n.into_inner())
+    }
+}
+
+fn binary_helper(mut pairs: Pairs<Rule>, next: fn(Pairs<Rule>)->Result<Expression, Error>) -> Result<Expression, Error> {
+    let mut result = next(pairs.next().unwrap().into_inner())?;
+    while let Some(x) = pairs.next() {
+        let mut x = x.into_inner();
+        let operator = x.next().unwrap().as_str().into();
+        let right = next(x.next().unwrap().into_inner())?;
+        result = Expression::Binary {
+            kind: operator,
+            operands: (Box::new(result), Box::new(right))
+        }
+    }
+    Ok(result)
+}
+
+fn match_or(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let mut result = match_and(pairs.next().unwrap().into_inner())?;
+    while let Some(x) = pairs.next() {
+        let mut x = x.into_inner();
+        x.next();
+        let right = match_and(x.next().unwrap().into_inner())?;
+        result = Expression::LogicOr(Box::new(result), Box::new(right));
+    }
+    Ok(result)
+}
+
+fn match_and(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let mut result = match_equality(pairs.next().unwrap().into_inner())?;
+    while let Some(x) = pairs.next() {
+        let mut x = x.into_inner();
+        x.next();
+        let right = match_equality(x.next().unwrap().into_inner())?;
+        result = Expression::LogicAnd(Box::new(result), Box::new(right));
+    }
+    Ok(result)
+}
+
+fn match_equality(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    binary_helper(pairs, match_comparison)
+}
+
+fn match_comparison(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    binary_helper(pairs, match_addition)
+}
+
+fn match_addition(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    println!("{:#?}", pairs);
+    binary_helper(pairs, match_multiplication)
+}
+
+fn match_multiplication(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    binary_helper(pairs, match_unary)
+}
+
+fn match_unary(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let next = pairs.next().unwrap();
+    match next.as_rule() {
+        Rule::unary_op => {
+            let operator = next.as_str().into();
+            let expr = match_unary(pairs)?;
+            Ok(Expression::Unary {
+                kind: operator,
+                expr: Box::new(expr)
+            })
+        },
+        Rule::call => Ok(Expression::Literal(expression::Literal::True)),
+        x => {
+            println!("{:?}", x);
+            unreachable!()
+        }
+    }
+}
+
+/*
+
+
 
 pub struct Parser<'a, T: Iterator<Item = &'a Token>> {
     tokens: Peekable<T>,
@@ -470,3 +695,4 @@ impl<'a, T: Iterator<Item = &'a Token>> Parser<'a, T> {
         }
     }
 }
+*/
