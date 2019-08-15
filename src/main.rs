@@ -150,7 +150,7 @@ fn run<'a, 'x, 's>(
 ) {
     match parse::parse(&input) {
         Ok(x) => {
-//            println!("{:?}", x);
+            println!("{:?}", x);
             if let Some(e) = interpreter.interpret(x, ext) {
                 writeln!(ext.output, "{:?}", e);
             }

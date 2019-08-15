@@ -1,4 +1,4 @@
-WHITESPACE = _{" " | NEWLINE}
+WHITESPACE = _{" "}
 COMMENT    = _{ "#" ~ (!NEWLINE~ANY)* ~ NEWLINE}
 
 keywords = @{
@@ -23,7 +23,7 @@ keywords = @{
 
 file = _{ SOI ~ multiple_expression ~ EOI }
 
-multiple_expression = ${ WHITESPACE* ~ expression? ~ (NEWLINE ~ WHITESPACE* ~ expression)* ~ NEWLINE* }
+multiple_expression = !{ NEWLINE* ~ expression? ~ (NEWLINE+ ~ expression)* ~ NEWLINE* }
 
 expression = !{
 	block |

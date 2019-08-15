@@ -13,6 +13,7 @@ use std::ops::{Add, Div, Mul, Sub, Try};
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Debug)]
 enum ExprResult {
     Value(Value),
     ControlFlow(ControlFlowConstruct),
@@ -24,6 +25,7 @@ enum ExprError {
     Err(Error)
 }
 
+#[derive(Debug)]
 enum ControlFlowConstruct {
     Return(Option<Value>)
 }
@@ -254,7 +256,13 @@ impl<'a> Interpreter<'a> {
         self.environment.borrow_mut().wrap();
         let mut last = Value::String("None type from block expression".to_string());
         for expr in exprs {
-            last = self.visit(expr, out)?
+            match self.visit(expr, out){
+                ExprResult::ControlFlow(x) => {
+                    self.environment.borrow_mut().unwrap();
+                    return ExprResult::ControlFlow(x)
+                },
+                x => last = x?
+            };
         }
         self.environment.borrow_mut().unwrap();
         return ExprResult::Value(last);
