@@ -91,23 +91,22 @@ pub fn run_wasm(input: &str, output: &js_sys::Function) {
 }
 
 fn run_file(file: &str) {
-    pest_parse(file);
-//    let contents = fs::read_to_string(file).expect("Something went wrong reading the file");
-//    let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
-//    run(
-//        contents,
-//        x,
-//        &Interpreter::new(x),
-//        &mut External {
-//            output: &mut std::io::stdout(),
-//            clock: || {
-//                SystemTime::now()
-//                    .duration_since(UNIX_EPOCH)
-//                    .unwrap()
-//                    .as_secs_f64()
-//            },
-//        },
-//    );
+    let contents = fs::read_to_string(file).expect("Something went wrong reading the file");
+    let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
+    run(
+        contents,
+        x,
+        &Interpreter::new(x),
+        &mut External {
+            output: &mut std::io::stdout(),
+            clock: || {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs_f64()
+            },
+        },
+    );
 }
 
 fn run_prompt() {
@@ -149,25 +148,15 @@ fn run<'a, 'x, 's>(
     interpreter: &'a Interpreter<'s>,
     ext: &'a mut External<'a>,
 ) {
-//    let (tokens, errors): (Vec<Result<Token, Error>>, Vec<Result<Token, Error>>) =
-//        Lexer::new(&input, err_build).partition(Result::is_ok);
-//    if errors.len() > 0 {
-//        errors
-//            .iter()
-//            .for_each(|e| writeln!(ext.output, "{:?}", e).unwrap_or(()));
-//        return;
-//    }
-//    let tokens = tokens.into_iter().map(Result::unwrap).collect::<Vec<_>>();
-//    let mut parser = Parser::new(tokens.iter(), err_build);
-//    match parser.parse() {
-//        Ok(x) => {
-////            println!("{:?}", x);
-//            if let Some(e) = interpreter.interpret(x, ext) {
-//                writeln!(ext.output, "{:?}", e);
-//            }
-//        }
-//        Err(e) => {
-//            writeln!(ext.output, "{:?}", e);
-//        }
-//    }
+    match parse::parse(&input) {
+        Ok(x) => {
+//            println!("{:?}", x);
+            if let Some(e) = interpreter.interpret(x, ext) {
+                writeln!(ext.output, "{:?}", e);
+            }
+        }
+        Err(e) => {
+            writeln!(ext.output, "{:?}", e);
+        }
+    }
 }

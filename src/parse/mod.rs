@@ -237,7 +237,6 @@ fn match_call(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
 
 fn match_primary(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
     let r = pairs.next().unwrap();
-    println!("{:?}", r);
     match r.as_rule() {
         Rule::number => Ok(Expression::Literal(expression::Literal::Float(r.as_str().parse().unwrap()))),
         Rule::string => Ok(Expression::Literal(expression::Literal::String(r.into_inner().next().unwrap().as_str().to_string()))),
