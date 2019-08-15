@@ -1,1 +1,1 @@
-b and b and b
+dict(1, "2", true, (1 + 2), hello)

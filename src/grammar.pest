@@ -91,8 +91,8 @@ multiplication_op = { "*" | "/" }
 unary = { unary_op ~ unary | call }
 unary_op = { "!" | "-" }
 
-call = { primary ~ ("(" ~ args? ~ ")")? }
-args = { expression ~ ("," ~ expression)* }
+call = { primary ~ args? }
+args = { "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 
 primary = {
 	number |
@@ -114,4 +114,4 @@ string_inner = {
 
 boolean = { "true" | "false" }
 grouping = { "(" ~ expression ~ ")" }
-variable = ${ ("move " | "excl ")? ~ ident }
+variable = ${ ident }

@@ -199,7 +199,6 @@ fn match_comparison(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
 }
 
 fn match_addition(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
-    println!("{:#?}", pairs);
     binary_helper(pairs, match_multiplication)
 }
 
@@ -218,13 +217,41 @@ fn match_unary(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
                 expr: Box::new(expr)
             })
         },
-        Rule::call => Ok(Expression::Literal(expression::Literal::True)),
-        x => {
-            println!("{:?}", x);
-            unreachable!()
-        }
+        Rule::call => match_call(next.into_inner()),
+        _ => unreachable!()
     }
 }
+
+fn match_call(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let callee = match_primary(pairs.next().unwrap().into_inner())?;
+    if let Some(args) = pairs.next() {
+        let mut a = vec![];
+        for record in args.into_inner() {
+            a.push(match_expression(record)?);
+        }
+        Ok(Expression::Call(Box::new(callee), a))
+    } else {
+        Ok(callee)
+    }
+}
+
+fn match_primary(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+    let r = pairs.next().unwrap();
+    println!("{:?}", r);
+    match r.as_rule() {
+        Rule::number => Ok(Expression::Literal(expression::Literal::Float(r.as_str().parse().unwrap()))),
+        Rule::string => Ok(Expression::Literal(expression::Literal::String(r.into_inner().next().unwrap().as_str().to_string()))),
+        Rule::boolean => Ok(Expression::Literal(match r.as_str() {
+            "true" => expression::Literal::True,
+            "false" => expression::Literal::False,
+            _ => unreachable!()
+        })),
+        Rule::grouping => match_expression(r.into_inner().next().unwrap()),
+        Rule::variable => Ok(Expression::Variable(r.into_inner().next().unwrap().as_str().to_string())),
+        _ => unreachable!()
+    }
+}
+
 
 /*
 
