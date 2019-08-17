@@ -14,8 +14,10 @@ use wasm_bindgen::__rt::std::process::exit;
 #[grammar = "grammar.pest"]
 pub struct WaveParser;
 
-pub fn parse(input: &str) -> Result<Vec<Expression>, Error>{
-    let parsed = WaveParser::parse(Rule::file, input).expect("Syntax should be valid")
+pub fn parse(input: &str, err_build: &ErrorBuilder) -> Result<Vec<Expression>, Error>{
+    let parsed = WaveParser::parse(Rule::file, input).map_err(|err|{
+        err_build.create(0, 0, ErrorType::ParseError(format!("{}", err)))
+    })?
         .next().unwrap(); // we can unwrap here, since if the result is Ok, then it must contain the rule we asked for.
     match_multiple_exprs(parsed.into_inner())
 }

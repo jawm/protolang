@@ -53,11 +53,6 @@ fn main() {
     }
 }
 
-fn pest_parse(input: &str) {
-    let unparsed_file = fs::read_to_string(input).expect("Input should be a valid filename");
-    println!("{:?}", parse::parse(unparsed_file.as_ref()));
-}
-
 #[wasm_bindgen]
 pub fn run_wasm(input: &str, output: &js_sys::Function) {
     struct Writer<'a> {
@@ -148,7 +143,7 @@ fn run<'a, 'x, 's>(
     interpreter: &'a Interpreter<'s>,
     ext: &'a mut External<'a>,
 ) {
-    match parse::parse(&input) {
+    match parse::parse(&input, err_build) {
         Ok(x) => {
             println!("{:?}", x);
             if let Some(e) = interpreter.interpret(x, ext) {
@@ -156,7 +151,7 @@ fn run<'a, 'x, 's>(
             }
         }
         Err(e) => {
-            writeln!(ext.output, "{:?}", e);
+            writeln!(ext.output, "{}", e);
         }
     }
 }

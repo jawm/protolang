@@ -1,8 +1,11 @@
 use crate::interpreter::Value;
 use crate::lex::tokens::{Token, TokenType};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum ErrorType {
+    ParseError(String),
+
     // Lexing errors
     NumberWithTrailingDot,
     UnexpectedCharacter(char),
@@ -41,6 +44,15 @@ pub struct Error {
     length: usize,
     input_name: String,
     input_string: String,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        match &self.error_type {
+            ErrorType::ParseError(s) => write!(f, "{}", s),
+            _ => write!(f, "Error type {:?}\nLocation: {}", self.error_type, self.location)
+        }
+    }
 }
 
 pub struct ErrorBuilder {
