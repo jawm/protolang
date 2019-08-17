@@ -1,4 +1,4 @@
-WHITESPACE = _{" "}
+WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "#" ~ (!NEWLINE~ANY)* ~ NEWLINE}
 
 keywords = @{
@@ -23,9 +23,9 @@ keywords = @{
 
 file = _{ SOI ~ multiple_expression ~ EOI }
 
-multiple_expression = !{ NEWLINE* ~ expression? ~ (NEWLINE+ ~ expression)* ~ NEWLINE* }
+multiple_expression = !{ NEWLINE* ~ expression? ~ (NEWLINE* ~ expression)* ~ NEWLINE* }
 
-expression = !{
+expression = ${
 	block |
     assign |
     function |
@@ -34,8 +34,8 @@ expression = !{
 }
 
 block = { ("{" ~ multiple_expression ~ "}")}
-assign = { ident ~ "=" ~ expression }
-function = { "fn" ~ "(" ~ params? ~ ")" ~ signature_ret ~ expression }
+assign = !{ ident ~ "=" ~ expression }
+function = !{ "fn" ~ "(" ~ params? ~ ")" ~ signature_ret ~ expression }
 params = { parameter? ~ ("," ~ parameter)* }
 parameter = ${ shared_param | excl_param | move_param }
 shared_param = { ident ~ lifetime? }
@@ -50,7 +50,7 @@ lifetime = { "'" ~ ident }
 ident = @{ !keywords ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 body_ret = ${ "return" ~ (" " ~ expression)? }
 
-if_expr = {
+if_expr = !{
 	if_help |
     while_expr
 }

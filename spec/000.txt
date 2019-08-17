@@ -1,0 +1,32 @@
+So I just deleted almost everything I've written up to now. Anyways, I've been
+planning to write stuff up a bit more formally for a while so maybe this will
+spur me into action.
+
+Anyways, what I was going to write down was a possible API for partial 
+application of function objects:
+
+```lang
+
+# Usage:
+
+x = fn(a, b, c) return a + b + c
+
+add3 = x.partial(1, 2)
+
+if add3(4) == 7 print "Partial application rules!"
+
+# Rough API of the `partial` function:
+partial = fn(self, ) return'
+
+
+```
+
+Actually trying to write out the API for that seems comlicated. There's a few
+ways to do it, but none are supported for the core language as I've defined it
+so far.
+
+One approach is to take `*args` like python, but I think that would require 
+the whole array to be `excl` which seems restrictive.
+
+Another approach is to have keywords arguments with default values, but then 
+I'm not sure how the lifetimes would be set up...
