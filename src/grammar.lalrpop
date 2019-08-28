@@ -1,0 +1,83 @@
+use std::str::FromStr;
+use crate::ast::expression::{
+    Literal,
+    Expression,
+    Param,
+    Return,
+    AccessType
+};
+
+grammar;
+
+pub Program: Vec<Expression> = <BodyRet*>;
+
+BodyRet: Expression = {
+    "return" => Expression::Return(None),
+    "return" " " <Expr> => Expression::Return(Some(Box::new(<>))),
+    Expr,
+}
+
+Expr: Expression = {
+    Block => Expression::Block(<>),
+    <a: Assign> => Expression::Assign(a.0.to_string(), Box::new(a.1)),
+    Literal => Expression::Literal(<>),
+    <a: Function> => Expression::Function(a.0, a.1, Box::new(a.2)),
+    <a: IfExpr> => Expression::If(Box::new(a.0), Box::new(a.1), a.2.map(Box::new)),
+};
+
+Block: Vec<Expression> = "{" <Expr*> "}";
+Assign: (&'input str, Expression) = <Identifier> "=" <Expr>;
+Function: (Vec<Param>, Option<Return>, Expression) = "fn" "(" <Comma<Param>> ")" <Return> <Expr>;
+Return: Option<Return> = {
+    "_" => None,
+    "return" <b: ("'" <Identifier>)?> => Some(Return {
+        lifetime: b.map(ToString::to_string),
+        access_type: AccessType::Shared,
+    }),
+    "excl return" <b: ("'" <Identifier>)?> => Some(Return {
+            lifetime: b.map(ToString::to_string),
+            access_type: AccessType::Excl,
+    }),
+    "move return" => Some(Return {
+        lifetime: None,
+        access_type: AccessType::Move,
+    }),
+};
+IfExpr: (Expression, Expression, Option<Expression>) = "if" <a: Expr> <b: Block> <c: ("else" <Block>)?> =>
+    (a,
+     Expression::Block(b),
+     c.map(Expression::Block));
+
+
+Identifier: &'input str = r"([[:alpha:]])([[:word:]])*";
+
+Literal: Literal = "5" => Literal::False;
+
+Param: Param = {
+    <a: Identifier> <b: ("'" <Identifier>)?> => Param {
+        ident: a.to_string(),
+        lifetime: b.map(ToString::to_string),
+        access_type: AccessType::Shared,
+    },
+    "excl " <a: Identifier> <b: ("'" <Identifier>)?> => Param {
+        ident: a.to_string(),
+        lifetime: b.map(ToString::to_string),
+        access_type: AccessType::Excl,
+    },
+    "move " <Identifier> => Param {
+        ident: <>.to_string(),
+        lifetime: None,
+        access_type: AccessType::Move,
+    }
+};
+
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};

@@ -69,7 +69,7 @@ impl Display for Expression {
                 write!(f, ")")
             },
             Expression::Function(params, ret, _) => {
-                write!(f, "Fn(");
+                write!(f, "fn(");
                 for param in params {
                     write!(f, "{},", param);
                 }

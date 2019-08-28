@@ -14,19 +14,19 @@ use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
-enum ExprResult {
+pub enum ExprResult {
     Value(Value),
     ControlFlow(ControlFlowConstruct),
     Err(Error),
 }
 
-enum ExprError {
+pub enum ExprError {
     ControlFlow(ControlFlowConstruct),
     Err(Error)
 }
 
 #[derive(Debug)]
-enum ControlFlowConstruct {
+pub enum ControlFlowConstruct {
     Return(Option<Value>)
 }
 
@@ -63,7 +63,7 @@ pub enum Value {
     Callable(Rc<Callable>),
 }
 
-trait Callable: Debug {
+pub trait Callable: Debug {
     fn arity(&self) -> usize;
     fn call<'a, 'pt>(
         &self,
