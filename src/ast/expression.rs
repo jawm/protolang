@@ -80,7 +80,7 @@ impl Display for Expression {
                 write!(f, " _")
             },
             Expression::Return(Some(expr)) => write!(f, "return {}", expr),
-            Expression::Return(None) => write!(f, "return"),
+            Expression::Return(None) => write!(f, "return _"),
         }
     }
 }

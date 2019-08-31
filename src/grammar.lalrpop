@@ -4,7 +4,9 @@ use crate::ast::expression::{
     Expression,
     Param,
     Return,
-    AccessType
+    AccessType,
+    BinaryOperation,
+    UnaryOperation
 };
 
 grammar;
@@ -12,20 +14,37 @@ grammar;
 pub Program: Vec<Expression> = <BodyRet*>;
 
 BodyRet: Expression = {
-    "return" => Expression::Return(None),
     "return" " " <Expr> => Expression::Return(Some(Box::new(<>))),
+    "return"            => Expression::Return(None),
     Expr,
 }
 
-Expr: Expression = {
-    Block => Expression::Block(<>),
-    <a: Assign> => Expression::Assign(a.0.to_string(), Box::new(a.1)),
-    Literal => Expression::Literal(<>),
-    <a: Function> => Expression::Function(a.0, a.1, Box::new(a.2)),
-    <a: IfExpr> => Expression::If(Box::new(a.0), Box::new(a.1), a.2.map(Box::new)),
+statement: Expression = {
+    open,
+    closed
 };
 
-Block: Vec<Expression> = "{" <Expr*> "}";
+open: Expression = {
+    "if " <a: Expr> <b: statement> => Expression::If(Box::new(a), Box::new(b), None),
+    "if " <a: Expr> <b: closed> "else" <c: open> => Expression::If(Box::new(a), Box::new(b), Some(Box::new(c)))
+};
+
+closed: Expression = {
+    Expr,
+    "if " <a: Expr> <b: closed> "else" <c: closed> => Expression::If(Box::new(a), Box::new(b), Some(Box::new(c)))
+};
+
+Expr: Expression = {
+    Block          => Expression::Block(<>),
+    <a: Assign>    => Expression::Assign(a.0.to_string(), Box::new(a.1)),
+    Literal        => Expression::Literal(<>),
+    <a: Function>  => Expression::Function(a.0, a.1, Box::new(a.2)),
+    <a: IfExpr>    => Expression::If(Box::new(a.0), Box::new(a.1), a.2.map(Box::new)),
+    <a: WhileExpr> => Expression::While(Box::new(a.0), Box::new(a.1)),
+    <LogicOr>
+};
+
+Block: Vec<Expression> = "{" <BodyRet*> "}";
 Assign: (&'input str, Expression) = <Identifier> "=" <Expr>;
 Function: (Vec<Param>, Option<Return>, Expression) = "fn" "(" <Comma<Param>> ")" <Return> <Expr>;
 Return: Option<Return> = {
@@ -43,10 +62,68 @@ Return: Option<Return> = {
         access_type: AccessType::Move,
     }),
 };
-IfExpr: (Expression, Expression, Option<Expression>) = "if" <a: Expr> <b: Block> <c: ("else" <Block>)?> =>
+IfExpr: (Expression, Expression, Option<Expression>) = "if " <a: Expr> <b: Block> <c: ("else" <Block>)?> =>
     (a,
      Expression::Block(b),
      c.map(Expression::Block));
+
+WhileExpr: (Expression, Expression) = "while " <Expr> <Expr>;
+
+LogicOr: Expression = {
+    <a: LogicAnd> " or " <b: LogicOr> => Expression::LogicOr(Box::new(a), Box::new(b)),
+    LogicAnd,
+};
+
+LogicAnd: Expression = {
+    <a: Equality> " and " <b: LogicAnd> => Expression::LogicAnd(Box::new(a), Box::new(b)),
+    Equality,
+};
+
+Equality: Expression       = Binary<Comparison, EqualityOp, Equality>;
+Comparison: Expression     = Binary<Addition, ComparisonOp, Comparison>;
+Addition: Expression       = Binary<Multiplication, AdditionOp, Addition>;
+Multiplication: Expression = Binary<Unary, MultiplicationOp, Multiplication>;
+
+Unary: Expression = {
+    <a: UnaryOp> <b: Unary> => Expression::Unary {
+        kind: a,
+        expr: Box::new(b)
+    },
+    //Call
+}
+
+//Call: Expresion =
+
+
+Binary<A, B, C>: Expression = {
+    <a: A> <b: B> <c: C> => Expression::Binary {
+        kind: b,
+        operands: (Box::new(a), Box::new(c)),
+    },
+    <A>,
+};
+EqualityOp: BinaryOperation = {
+    "==" => BinaryOperation::Equals,
+    "!=" => BinaryOperation::NotEquals,
+};
+ComparisonOp: BinaryOperation = {
+    ">=" => BinaryOperation::GreaterOrEqual,
+    "<=" => BinaryOperation::LessOrEqual,
+    ">"  => BinaryOperation::GreaterThan,
+    "<"  => BinaryOperation::LessThan,
+};
+AdditionOp: BinaryOperation = {
+    "+" => BinaryOperation::Plus,
+    "-" => BinaryOperation::Minus,
+};
+MultiplicationOp: BinaryOperation = {
+    "*" => BinaryOperation::Multiply,
+    "/" => BinaryOperation::Divide,
+};
+UnaryOp: UnaryOperation = {
+    "!" => UnaryOperation::Not,
+   // "-" => UnaryOperation::Minus,
+};
 
 
 Identifier: &'input str = r"([[:alpha:]])([[:word:]])*";
