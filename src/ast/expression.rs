@@ -33,7 +33,7 @@ pub enum Expression {
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            Expression::Variable(s) => write!(f, "{}", s),
+            Expression::Variable(s) => write!(f, "VAR({})", s),
             Expression::Statement(expr) => write!(f, "{}; ", expr),
             Expression::Block(e) => {
                 write!(f, "{{")?;

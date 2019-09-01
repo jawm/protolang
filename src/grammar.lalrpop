@@ -11,13 +11,20 @@ use crate::ast::expression::{
 
 grammar;
 
-pub Program: Vec<Expression> = <BodyRet*>;
+pub Program: Vec<Expression> = MultipleExpr;
+
+MultipleExpr: Vec<Expression> = <mut a: Expr*> <b: BodyRet?> => match b {
+    Some(r) => {
+        a.push(r);
+        a
+    },
+    _ => a
+};
 
 BodyRet: Expression = {
-    "return" " " <Expr> => Expression::Return(Some(Box::new(<>))),
-    "return"            => Expression::Return(None),
-    Expr,
-}
+    "return" <Expr> => Expression::Return(Some(Box::new(<>))),
+    "return"         => Expression::Return(None),
+};
 
 statement: Expression = {
     open,
@@ -44,7 +51,7 @@ Expr: Expression = {
     <LogicOr>
 };
 
-Block: Vec<Expression> = "{" <BodyRet*> "}";
+Block: Vec<Expression> = "{" <MultipleExpr> "}";
 Assign: (&'input str, Expression) = <Identifier> "=" <Expr>;
 Function: (Vec<Param>, Option<Return>, Expression) = "fn" "(" <Comma<Param>> ")" <Return> <Expr>;
 Return: Option<Return> = {
@@ -89,10 +96,37 @@ Unary: Expression = {
         kind: a,
         expr: Box::new(b)
     },
-    //Call
+    Call
 }
 
-//Call: Expresion =
+Call: Expression = {
+    <a: Primary> <b: ("(" <Comma<Expr>> ")") > => Expression::Call(Box::new(a), b),
+    Primary,
+};
+
+//Call: Expression = <a: Primary> <b: ("(" <Comma<Expr>> ")")?> => {
+//    match b {
+//        Some(args) => Expression::Call(Box::new(a), args),
+//        _ => a
+//    }
+//};
+
+Primary: Expression = {
+    number,
+    string,
+    boolean,
+    grouping,
+    variable,
+};
+
+number: Expression = <s:r"[0-9]+"> => Expression::Literal(Literal::Integer(i64::from_str(s).unwrap()));
+string: Expression = <s:r#""([^"\\]|\\.)*""#> => Expression::Literal(Literal::String(s[1..s.len()-1].to_string()));
+boolean: Expression = {
+    "true" => Expression::Literal(Literal::True),
+    "false" => Expression::Literal(Literal::False),
+};
+grouping: Expression = "(" <Expr> ")" => Expression::Grouping(Box::new(<>));
+variable: Expression = <Identifier> => Expression::Variable(<>.to_string());
 
 
 Binary<A, B, C>: Expression = {
