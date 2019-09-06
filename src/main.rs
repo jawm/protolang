@@ -90,26 +90,21 @@ lalrpop_mod!(pub grammar);
 
 fn run_file(file: &str) {
     let contents = fs::read_to_string(file).expect("Something went wrong reading the file");
-    let res = grammar::ProgramParser::new().parse(&contents);
-    match res.map(|x|x.iter().fold(String::new(), |acc, expr|format!("{}\n{}", acc, expr))) {
-        Ok(x) => println!("{}", x),
-        Err(y) => println!("{}", y),
-    }
-//    let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
-//    run(
-//        contents,
-//        x,
-//        &Interpreter::new(x),
-//        &mut External {
-//            output: &mut std::io::stdout(),
-//            clock: || {
-//                SystemTime::now()
-//                    .duration_since(UNIX_EPOCH)
-//                    .unwrap()
-//                    .as_secs_f64()
-//            },
-//        },
-//    );
+    let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
+    run(
+        contents,
+        x,
+        &Interpreter::new(x),
+        &mut External {
+            output: &mut std::io::stdout(),
+            clock: || {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs_f64()
+            },
+        },
+    );
 }
 
 fn run_prompt() {
@@ -151,15 +146,16 @@ fn run<'a, 'x, 's>(
     interpreter: &'a Interpreter<'s>,
     ext: &'a mut External<'a>,
 ) {
-    match parse::parse(&input, err_build) {
-        Ok(x) => {
-            println!("{:?}", x);
-            if let Some(e) = interpreter.interpret(x, ext) {
+    let res = grammar::ProgramParser::new().parse(&input);
+    match res {
+        Ok(exprs) => {
+            println!("{:?}", exprs);
+            if let Some(e) = interpreter.interpret(exprs, ext) {
                 writeln!(ext.output, "{:?}", e);
             }
-        }
-        Err(e) => {
-            writeln!(ext.output, "{}", e);
+        },
+        Err(y) => {
+            writeln!(ext.output, "{}", y);
         }
     }
 }

@@ -18,6 +18,8 @@ pub enum Expression {
         kind: BinaryOperation,
         operands: (Box<Expression>, Box<Expression>),
     },
+    ObjectNew(Box<Expression>, Vec<(String, Expression)>),
+    FieldAccess(Box<Expression>, String),
     Grouping(Box<Expression>),
     NonLocalAssign(String, Box<Expression>),
     Assign(String, Box<Expression>),
@@ -51,6 +53,8 @@ impl Display for Expression {
             Expression::Grouping(expr) => write!(f, "({})", expr),
             Expression::NonLocalAssign(name, expr) => write!(f, "nonlocal {}={}", name, expr),
             Expression::Assign(name, expr) => write!(f, "{}={}", name, expr),
+            Expression::ObjectNew(parent, fields) => write!(f, "{} ~ {{{:?}}}", parent, fields),
+            Expression::FieldAccess(obj, field) => write!(f, "{}.{}", obj, field),
             Expression::If(cond, yes, no) => {
                 if no.is_some() {
                     write!(f, "if ({}) {} else {}", cond, yes, no.as_ref().unwrap())
@@ -104,6 +108,7 @@ pub enum Literal {
     String(String),
     True,
     False,
+    Object, // The mother-of-all-objects (literally)
 }
 
 impl Display for Literal {
@@ -114,6 +119,7 @@ impl Display for Literal {
             Literal::String(s) => write!(f, "\"{}\"", s),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
+            Literal::Object => write!(f, "Object"),
         }
     }
 }
@@ -126,7 +132,10 @@ pub enum UnaryOperation {
 
 impl Display for UnaryOperation {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        unimplemented!()
+        write!(f, "{}", match self {
+            UnaryOperation::Not   => "!",
+            UnaryOperation::Minus => "-"
+        })
     }
 }
 

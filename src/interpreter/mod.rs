@@ -61,6 +61,16 @@ pub enum Value {
     String(String),
     Bool(bool),
     Callable(Rc<Callable>),
+    Object(HashMap<String, Value>)
+}
+
+impl Value {
+    fn field_access(&self, field: &str) -> Option<Value> {
+        match self {
+            Value::Object(x) => x.get(field).map(Clone::clone),
+            _ => None
+        }
+    }
 }
 
 pub trait Callable: Debug {
@@ -133,6 +143,7 @@ impl Display for Value {
             Value::String(x) => write!(f, "{}", x),
             Value::Bool(x) => write!(f, "{}", x),
             Value::Callable { .. } => write!(f, "FunctionObject"),
+            Value::Object(_) => write!(f, "Object"),
         }
     }
 }
@@ -194,11 +205,29 @@ impl<'a> Interpreter<'a> {
             Expression::Assign(s, expr) => {
                 let val = self.visit(expr, passthrough)?;
                 self.set_var(s, val)
-            }
+            },
+            Expression::ObjectNew(parent, fields) => {
+                let l = self.visit(parent, passthrough)?;
+
+                let x: Result<Vec<(String, Value)>, ExprError> = fields
+                    .into_iter()
+                    .map(|(k, v)|self.visit(v, passthrough)
+                        .into_result()
+                        .map(|value|(k.to_string(), value)))
+                    .collect();
+                let obj = x?.into_iter().collect();
+                ExprResult::Value(Value::Object(obj))
+            },
+            Expression::FieldAccess(obj, field) => {
+                let l = self.visit(obj, passthrough)?;
+                l.field_access(field)
+                    .map(ExprResult::Value)
+                    .unwrap_or(ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantField)))
+            },
             Expression::NonLocalAssign(s, expr) => {
                 let val = self.visit(expr, passthrough)?;
                 self.set_nonlocal(s, val)
-            }
+            },
             Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough),
             Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
             Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
@@ -237,6 +266,7 @@ impl<'a> Interpreter<'a> {
             Literal::String(s) => Value::String(s.to_string()),
             Literal::True => Value::Bool(true),
             Literal::False => Value::Bool(false),
+            Literal::Object => Value::Object(HashMap::new()),
         }
     }
 

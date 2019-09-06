@@ -33,6 +33,7 @@ pub enum ErrorType {
     MultiplyWrongTypes,
     DivideWrongTypes,
     NonExistantVariable,
+    NonExistantField,
     CallNonFunction,
     WrongNumberArgs,
 }

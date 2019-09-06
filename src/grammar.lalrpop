@@ -13,7 +13,7 @@ grammar;
 
 pub Program: Vec<Expression> = MultipleExpr;
 
-MultipleExpr: Vec<Expression> = <mut a: Expr*> <b: BodyRet?> => match b {
+MultipleExpr: Vec<Expression> = <mut a: (<Expr> ";")*> <b: (<BodyRet> ";")?> => match b {
     Some(r) => {
         a.push(r);
         a
@@ -22,32 +22,17 @@ MultipleExpr: Vec<Expression> = <mut a: Expr*> <b: BodyRet?> => match b {
 };
 
 BodyRet: Expression = {
-    "return" <Expr> => Expression::Return(Some(Box::new(<>))),
+    "return" <Expr>  => Expression::Return(Some(Box::new(<>))),
     "return"         => Expression::Return(None),
-};
-
-statement: Expression = {
-    open,
-    closed
-};
-
-open: Expression = {
-    "if " <a: Expr> <b: statement> => Expression::If(Box::new(a), Box::new(b), None),
-    "if " <a: Expr> <b: closed> "else" <c: open> => Expression::If(Box::new(a), Box::new(b), Some(Box::new(c)))
-};
-
-closed: Expression = {
-    Expr,
-    "if " <a: Expr> <b: closed> "else" <c: closed> => Expression::If(Box::new(a), Box::new(b), Some(Box::new(c)))
 };
 
 Expr: Expression = {
     Block          => Expression::Block(<>),
     <a: Assign>    => Expression::Assign(a.0.to_string(), Box::new(a.1)),
-    Literal        => Expression::Literal(<>),
     <a: Function>  => Expression::Function(a.0, a.1, Box::new(a.2)),
     <a: IfExpr>    => Expression::If(Box::new(a.0), Box::new(a.1), a.2.map(Box::new)),
     <a: WhileExpr> => Expression::While(Box::new(a.0), Box::new(a.1)),
+    <object>,
     <LogicOr>
 };
 
@@ -56,15 +41,15 @@ Assign: (&'input str, Expression) = <Identifier> "=" <Expr>;
 Function: (Vec<Param>, Option<Return>, Expression) = "fn" "(" <Comma<Param>> ")" <Return> <Expr>;
 Return: Option<Return> = {
     "_" => None,
-    "return" <b: ("'" <Identifier>)?> => Some(Return {
+    <refLife: ("'" <Identifier>)?> "return" <b: ("'" <Identifier>)?> => Some(Return {
         lifetime: b.map(ToString::to_string),
         access_type: AccessType::Shared,
     }),
-    "excl return" <b: ("'" <Identifier>)?> => Some(Return {
+    "excl" <refLife: ("'" <Identifier>)?> "return" <b: ("'" <Identifier>)?> => Some(Return {
             lifetime: b.map(ToString::to_string),
             access_type: AccessType::Excl,
     }),
-    "move return" => Some(Return {
+    "move return" <objLife: ("'" <Identifier>)?> => Some(Return {
         lifetime: None,
         access_type: AccessType::Move,
     }),
@@ -74,7 +59,7 @@ IfExpr: (Expression, Expression, Option<Expression>) = "if " <a: Expr> <b: Block
      Expression::Block(b),
      c.map(Expression::Block));
 
-WhileExpr: (Expression, Expression) = "while " <Expr> <Expr>;
+WhileExpr: (Expression, Expression) = "while " <a: Expr> <b: Block> => (a, Expression::Block(b));
 
 LogicOr: Expression = {
     <a: LogicAnd> " or " <b: LogicOr> => Expression::LogicOr(Box::new(a), Box::new(b)),
@@ -96,20 +81,25 @@ Unary: Expression = {
         kind: a,
         expr: Box::new(b)
     },
-    Call
+    Try,
+};
+
+Try: Expression = {
+    <Try> "?",
+    <Call>
 }
 
 Call: Expression = {
-    <a: Primary> <b: ("(" <Comma<Expr>> ")") > => Expression::Call(Box::new(a), b),
-    Primary,
+    <a: Field> <mut b: ("(" <Comma<Expr>> ")")+ > => Expression::Call(Box::new(a), b.remove(0)),
+    Field,
 };
 
-//Call: Expression = <a: Primary> <b: ("(" <Comma<Expr>> ")")?> => {
-//    match b {
-//        Some(args) => Expression::Call(Box::new(a), args),
-//        _ => a
-//    }
-//};
+Field: Expression = <mut a: Primary> <fields: ("." <Identifier>)*> => {
+    for ident in fields {
+        a = Expression::FieldAccess(Box::new(a), ident.to_string());
+    }
+    return a;
+};
 
 Primary: Expression = {
     number,
@@ -117,6 +107,7 @@ Primary: Expression = {
     boolean,
     grouping,
     variable,
+    "Object" => Expression::Literal(Literal::Object),
 };
 
 number: Expression = <s:r"[0-9]+"> => Expression::Literal(Literal::Integer(i64::from_str(s).unwrap()));
@@ -128,6 +119,14 @@ boolean: Expression = {
 grouping: Expression = "(" <Expr> ")" => Expression::Grouping(Box::new(<>));
 variable: Expression = <Identifier> => Expression::Variable(<>.to_string());
 
+object: Expression = <parent: LogicOr> "~" "{"
+    <entries: Comma<entry>>
+"}" => Expression::ObjectNew(Box::new(parent), entries) ;
+
+entry: (String, Expression) = {
+    "proto "? <a: string> ":" <b: Expr> => (a.to_string(), b),
+    "proto "? <a: Identifier> ":" <b: Expr> => (a.to_string(), b),
+};
 
 Binary<A, B, C>: Expression = {
     <a: A> <b: B> <c: C> => Expression::Binary {
@@ -156,28 +155,25 @@ MultiplicationOp: BinaryOperation = {
 };
 UnaryOp: UnaryOperation = {
     "!" => UnaryOperation::Not,
-   // "-" => UnaryOperation::Minus,
+    "-" => UnaryOperation::Minus,
 };
-
 
 Identifier: &'input str = r"([[:alpha:]])([[:word:]])*";
 
-Literal: Literal = "5" => Literal::False;
-
 Param: Param = {
-    <a: Identifier> <b: ("'" <Identifier>)?> => Param {
+    <refLife: ("'" <Identifier>)?> <a: Identifier> <objLife: ("'" <Identifier>)?> => Param {
         ident: a.to_string(),
-        lifetime: b.map(ToString::to_string),
+        lifetime: objLife.map(ToString::to_string),
         access_type: AccessType::Shared,
     },
-    "excl " <a: Identifier> <b: ("'" <Identifier>)?> => Param {
+    "excl" <refLife: ("'" <Identifier>)?> <a: Identifier> <objLife: ("'" <Identifier>)?> => Param {
         ident: a.to_string(),
-        lifetime: b.map(ToString::to_string),
+        lifetime: objLife.map(ToString::to_string),
         access_type: AccessType::Excl,
     },
-    "move " <Identifier> => Param {
-        ident: <>.to_string(),
-        lifetime: None,
+    "move " <a: Identifier> <objLife: ("'" <Identifier>)?> => Param {
+        ident: a.to_string(),
+        lifetime: objLife.map(ToString::to_string),
         access_type: AccessType::Move,
     }
 };
