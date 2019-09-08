@@ -18,8 +18,9 @@ pub enum Expression {
         kind: BinaryOperation,
         operands: (Box<Expression>, Box<Expression>),
     },
-    ObjectNew(Box<Expression>, Vec<(String, Expression)>),
+    ObjectNew(Box<Expression>, Vec<(FieldIdent, Expression)>),
     FieldAccess(Box<Expression>, String),
+    FieldSet(Box<Expression>, String, Box<Expression>),
     Grouping(Box<Expression>),
     NonLocalAssign(String, Box<Expression>),
     Assign(String, Box<Expression>),
@@ -28,6 +29,7 @@ pub enum Expression {
     LogicAnd(Box<Expression>, Box<Expression>),
     While(Box<Expression>, Box<Expression>),
     Call(Box<Expression>, Vec<Expression>),
+    Method(Box<Expression>, String, Vec<Expression>),
     Function(Vec<Param>, Option<Return>, Box<Expression>),
     Return(Option<Box<Expression>>),
 }
@@ -55,6 +57,7 @@ impl Display for Expression {
             Expression::Assign(name, expr) => write!(f, "{}={}", name, expr),
             Expression::ObjectNew(parent, fields) => write!(f, "{} ~ {{{:?}}}", parent, fields),
             Expression::FieldAccess(obj, field) => write!(f, "{}.{}", obj, field),
+            Expression::FieldSet(obj, field, rhs) => write!(f, "{}.{} = {}", obj, field, rhs),
             Expression::If(cond, yes, no) => {
                 if no.is_some() {
                     write!(f, "if ({}) {} else {}", cond, yes, no.as_ref().unwrap())
@@ -68,7 +71,14 @@ impl Display for Expression {
             Expression::Call(callee, args) => {
                 write!(f, "{}(", callee);
                 for arg in args {
-                    write!(f, "{}", arg);
+                    write!(f, "{},", arg);
+                }
+                write!(f, ")")
+            },
+            Expression::Method(callee, field, args) => {
+                write!(f, "{}:{}", callee, field);
+                for arg in args {
+                    write!(f, "{},", arg);
                 }
                 write!(f, ")")
             },
@@ -120,6 +130,21 @@ impl Display for Literal {
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
             Literal::Object => write!(f, "Object"),
+        }
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+pub enum FieldIdent {
+    Normal(String),
+    Proto(String),
+}
+
+impl Display for FieldIdent {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            FieldIdent::Normal(s) => write!(f, "{}", s),
+            FieldIdent::Proto(s) => write!(f, "proto {}", s),
         }
     }
 }

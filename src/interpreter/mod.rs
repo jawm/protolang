@@ -1,5 +1,5 @@
 use crate::ast::expression::{
-    BinaryOperation, Expression, ExpressionVisitor, Literal, Param, UnaryOperation,
+    BinaryOperation, Expression, ExpressionVisitor, Literal, Param, UnaryOperation, FieldIdent
 };
 use crate::errors::{Error, ErrorBuilder, ErrorType};
 use crate::External;
@@ -30,6 +30,11 @@ pub enum ControlFlowConstruct {
     Return(Option<Value>)
 }
 
+pub enum ValRef<'a> {
+    Val(Value),
+    Ref(Ref<'a, Value>)
+}
+
 impl Try for ExprResult {
     type Ok = Value;
     type Error = ExprError;
@@ -54,22 +59,51 @@ impl Try for ExprResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Value {
     Integer(i64),
     Float(f64),
     String(String),
     Bool(bool),
     Callable(Rc<Callable>),
-    Object(HashMap<String, Value>)
+    Object(HashMap<FieldIdent, RefCell<Value>>)
 }
 
 impl Value {
-    fn field_access(&self, field: &str) -> Option<Value> {
+    fn field_access(&self, field: &str) -> Option<Ref<Value>> {
         match self {
-            Value::Object(x) => x.get(field).map(Clone::clone),
+            Value::Object(x) => {
+                x.get(&FieldIdent::Normal(field.to_string()))
+                    .map(|rc|rc.borrow())
+            },
             _ => None
         }
+    }
+
+    fn field_set(&mut self, field: &str, value: Value) {
+        match self {
+            Value::Object(x) => {
+                x.insert(FieldIdent::Normal(field.to_string()), RefCell::new(value));
+            },
+            _ => {}
+        }
+    }
+
+    fn proto_fields(&self) -> HashMap<FieldIdent, Ref<Value>> {
+        // TODO fix this pls
+        HashMap::new()
+//        match self {
+//            Value::Object(x) => {
+//                let mut h = HashMap::new();
+//                for (k, v) in x {
+//                    if let FieldIdent::Proto(_) = k {
+//                        h.insert(k.clone(), v.clone());
+//                    }
+//                }
+//                h
+//            },
+//            _ => HashMap::new()
+//        }
     }
 }
 
@@ -208,15 +242,21 @@ impl<'a> Interpreter<'a> {
             },
             Expression::ObjectNew(parent, fields) => {
                 let l = self.visit(parent, passthrough)?;
-
-                let x: Result<Vec<(String, Value)>, ExprError> = fields
+                let mut proto: HashMap<FieldIdent, Ref<Value>> = l.proto_fields().into_iter().map(|(k, v)|{
+                    (match k {
+                        FieldIdent::Proto(s) => FieldIdent::Normal(s),
+                        x => x,
+                    }, v)
+                }).collect();
+                let x: Result<Vec<(FieldIdent, Ref<Value>)>, ExprError> = fields
                     .into_iter()
                     .map(|(k, v)|self.visit(v, passthrough)
                         .into_result()
-                        .map(|value|(k.to_string(), value)))
+                        .map(|value|(k.clone(), value)))
                     .collect();
-                let obj = x?.into_iter().collect();
-                ExprResult::Value(Value::Object(obj))
+                let obj: HashMap<FieldIdent, Ref<Value>> = x?.into_iter().collect();
+                proto.extend(obj);
+                ExprResult::Value(Value::Object(proto))
             },
             Expression::FieldAccess(obj, field) => {
                 let l = self.visit(obj, passthrough)?;
@@ -224,10 +264,32 @@ impl<'a> Interpreter<'a> {
                     .map(ExprResult::Value)
                     .unwrap_or(ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantField)))
             },
+            Expression::FieldSet(obj, field, rhs) => {
+                let mut l = self.visit(obj, passthrough)?;
+                let r = self.visit(rhs, passthrough)?;
+                l.field_set(field, r);
+                ExprResult::Value(Value::String(
+                    "THIS IS A NONE VALUE FROM SETTING FIELD".to_string(),
+                ))
+            },
             Expression::NonLocalAssign(s, expr) => {
                 let val = self.visit(expr, passthrough)?;
                 self.set_nonlocal(s, val)
             },
+            Expression::Method(callee, field, args) => {
+                let l = self.visit(callee, passthrough)?;
+                let method = l.field_access(field);
+                if let None = method {
+                    return ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantField));
+                }
+                let method = method.unwrap();
+                let mut arg_vals = Vec::with_capacity(1 + args.len());
+                arg_vals.push(l);
+                for arg in args {
+                    arg_vals.push(self.visit(arg, passthrough)?);
+                }
+                self.run_callable(method, arg_vals, passthrough)
+            }
             Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough),
             Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
             Expression::LogicAnd(a, b) => self.logic_and(a, b, passthrough),
@@ -440,20 +502,24 @@ impl<'a> Interpreter<'a> {
         //        let arguments_result: Result<Vec<Value>, Error> = args.iter().map(|arg|self.visit(arg, out)).collect();
         match arguments_result {
             Ok(args) => {
-                if let Value::Callable(call) = callable {
-                    if call.arity() == args.len() {
-                        match call.call(self, out, args) {
-                            ExprResult::ControlFlow(ControlFlowConstruct::Return(x)) => ExprResult::Value(x.unwrap_or(Value::String("NONE RETURN FROM FUNCTION".to_string()))),
-                            x => x,
-                        }
-                    } else {
-                        ExprResult::Err(self.err_build.create(0, 0, ErrorType::WrongNumberArgs))
-                    }
-                } else {
-                    ExprResult::Err(self.err_build.create(0, 0, ErrorType::CallNonFunction))
-                }
+                self.run_callable(callable, args, out)
             }
             Err(e) => ExprResult::Err(e),
+        }
+    }
+
+    fn run_callable<'pt, 'x>(&self, callable: Value, args: Vec<Value>, out: &'pt mut External<'x>,) -> ExprResult {
+        if let Value::Callable(call) = callable {
+            if call.arity() == args.len() {
+                match call.call(self, out, args) {
+                    ExprResult::ControlFlow(ControlFlowConstruct::Return(x)) => ExprResult::Value(x.unwrap_or(Value::String("NONE RETURN FROM FUNCTION".to_string()))),
+                    x => x,
+                }
+            } else {
+                ExprResult::Err(self.err_build.create(0, 0, ErrorType::WrongNumberArgs))
+            }
+        } else {
+            ExprResult::Err(self.err_build.create(0, 0, ErrorType::CallNonFunction))
         }
     }
 

@@ -6,7 +6,8 @@ use crate::ast::expression::{
     Return,
     AccessType,
     BinaryOperation,
-    UnaryOperation
+    UnaryOperation,
+    FieldIdent,
 };
 
 grammar;
@@ -28,16 +29,22 @@ BodyRet: Expression = {
 
 Expr: Expression = {
     Block          => Expression::Block(<>),
-    <a: Assign>    => Expression::Assign(a.0.to_string(), Box::new(a.1)),
+    Assign,
     <a: Function>  => Expression::Function(a.0, a.1, Box::new(a.2)),
     <a: IfExpr>    => Expression::If(Box::new(a.0), Box::new(a.1), a.2.map(Box::new)),
     <a: WhileExpr> => Expression::While(Box::new(a.0), Box::new(a.1)),
-    <object>,
-    <LogicOr>
+    object,
+    LogicOr
 };
 
 Block: Vec<Expression> = "{" <MultipleExpr> "}";
-Assign: (&'input str, Expression) = <Identifier> "=" <Expr>;
+Assign: Expression = <c: (<Call> ".")?> <ident: Identifier> "=" <rhs: Expr> => {
+    if let Some(call) = c {
+        Expression::FieldSet(Box::new(call), ident.to_string(), Box::new(rhs))
+    } else {
+        Expression::Assign(ident.to_string(), Box::new(rhs))
+    }
+};
 Function: (Vec<Param>, Option<Return>, Expression) = "fn" "(" <Comma<Param>> ")" <Return> <Expr>;
 Return: Option<Return> = {
     "_" => None,
@@ -90,16 +97,19 @@ Try: Expression = {
 }
 
 Call: Expression = {
-    <a: Field> <mut b: ("(" <Comma<Expr>> ")")+ > => Expression::Call(Box::new(a), b.remove(0)),
+    <a: Call> "(" <b: Comma<Expr>> ")" => Expression::Call(Box::new(a), b),
     Field,
 };
 
-Field: Expression = <mut a: Primary> <fields: ("." <Identifier>)*> => {
-    for ident in fields {
-        a = Expression::FieldAccess(Box::new(a), ident.to_string());
-    }
-    return a;
+Field: Expression = {
+    <a: Call> "." <field: Identifier> => Expression::FieldAccess(Box::new(a), field.to_string()),
+    <Method>
 };
+
+Method: Expression = {
+    <a: Call> ":" <field:Identifier> "(" <args: Comma<Expr>> ")" => Expression::Method(Box::new(a), field.to_string(), args),
+    <Primary>
+}
 
 Primary: Expression = {
     number,
@@ -123,9 +133,9 @@ object: Expression = <parent: LogicOr> "~" "{"
     <entries: Comma<entry>>
 "}" => Expression::ObjectNew(Box::new(parent), entries) ;
 
-entry: (String, Expression) = {
-    "proto "? <a: string> ":" <b: Expr> => (a.to_string(), b),
-    "proto "? <a: Identifier> ":" <b: Expr> => (a.to_string(), b),
+entry: (FieldIdent, Expression) = {
+    <proto: "proto "?> <a: string> ":" <b: Expr> => (proto.map(|_|FieldIdent::Proto(a.to_string())).unwrap_or(FieldIdent::Normal(a.to_string())), b),
+    <proto: "proto "?> <a: Identifier> ":" <b: Expr> => (proto.map(|_|FieldIdent::Proto(a.to_string())).unwrap_or(FieldIdent::Normal(a.to_string())), b),
 };
 
 Binary<A, B, C>: Expression = {
