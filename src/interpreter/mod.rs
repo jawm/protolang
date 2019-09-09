@@ -14,30 +14,31 @@ use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
-pub enum ExprResult {
-    Value(Value),
-    ControlFlow(ControlFlowConstruct),
+pub enum ExprResult<'a> {
+    Value(ValRef<'a>),
+    ControlFlow(ControlFlowConstruct<'a>),
     Err(Error),
 }
 
-pub enum ExprError {
-    ControlFlow(ControlFlowConstruct),
+pub enum ExprError<'a> {
+    ControlFlow(ControlFlowConstruct<'a>),
     Err(Error)
 }
 
 #[derive(Debug)]
-pub enum ControlFlowConstruct {
-    Return(Option<Value>)
+pub enum ControlFlowConstruct<'a> {
+    Return(Option<ValRef<'a>>)
 }
 
+#[derive(Debug)]
 pub enum ValRef<'a> {
-    Val(Value),
-    Ref(Ref<'a, Value>)
+    Val(Value<'a>),
+    Ref(Ref<'a, ValRef<'a>>)
 }
 
-impl Try for ExprResult {
-    type Ok = Value;
-    type Error = ExprError;
+impl<'a> Try for ExprResult<'a> {
+    type Ok = ValRef<'a>;
+    type Error = ExprError<'a>;
 
     fn into_result(self) -> Result<Self::Ok, Self::Error> {
         match self {
@@ -60,17 +61,53 @@ impl Try for ExprResult {
 }
 
 #[derive(Debug)]
-pub enum Value {
+pub enum Value<'a> {
     Integer(i64),
     Float(f64),
     String(String),
     Bool(bool),
-    Callable(Rc<Callable>),
-    Object(HashMap<FieldIdent, RefCell<Value>>)
+    Callable(Rc<Callable<'a>>),
+    Object(HashMap<FieldIdent, RefCell<ValRef<'a>>>)
 }
 
-impl Value {
-    fn field_access(&self, field: &str) -> Option<Ref<Value>> {
+impl<'a> ValRef<'a> {
+    fn field_access(&'a self, field: &str) -> Option<Ref<'a, ValRef>> {
+        match self {
+            ValRef::Val(x) => x.field_access(field),
+            ValRef::Ref(x) => x.field_access(field),
+        }
+    }
+    fn field_set<'b>(&'b mut self, field: &str, value: ValRef<'a>) {
+        match self {
+            ValRef::Val(x) => x.field_set(field, value),
+            ValRef::Ref(x) => x.field_set(field, value)
+        }
+    }
+    fn proto_fields(&'a self) -> HashMap<FieldIdent, Ref<ValRef>> {
+        match self {
+            ValRef::Val(x) => x.proto_fields(),
+            ValRef::Ref(x) => x.proto_fields(),
+        }
+    }
+    fn drill(&'a self) -> &'a Value<'a> {
+        match self {
+            ValRef::Val(x) => x,
+            ValRef::Ref(x) => x.drill()
+        }
+    }
+}
+
+impl Display for ValRef<'_> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            ValRef::Val(x) => write!(f, "{}", x),
+            ValRef::Ref(x) => write!(f, "{}", x),
+        }
+    }
+}
+
+impl<'b> Value<'b> {
+    fn field_access<'a>(&'a self, field: &str) -> Option<Ref<'a, ValRef<'b>>> {
         match self {
             Value::Object(x) => {
                 x.get(&FieldIdent::Normal(field.to_string()))
@@ -80,7 +117,7 @@ impl Value {
         }
     }
 
-    fn field_set(&mut self, field: &str, value: Value) {
+    fn field_set<'a>(&'a mut self, field: &str, value: ValRef<'b>) {
         match self {
             Value::Object(x) => {
                 x.insert(FieldIdent::Normal(field.to_string()), RefCell::new(value));
@@ -89,7 +126,7 @@ impl Value {
         }
     }
 
-    fn proto_fields(&self) -> HashMap<FieldIdent, Ref<Value>> {
+    fn proto_fields(&self) -> HashMap<FieldIdent, Ref<ValRef>> {
         // TODO fix this pls
         HashMap::new()
 //        match self {
@@ -107,38 +144,38 @@ impl Value {
     }
 }
 
-pub trait Callable: Debug {
+pub trait Callable<'res>: Debug {
     fn arity(&self) -> usize;
     fn call<'a, 'pt>(
-        &self,
-        interpreter: &'a Interpreter<'a>,
+        &'res self,
+        interpreter: &'res Interpreter<'res>,
         out: &'a mut External<'pt>,
-        args: Vec<Value>,
-    ) -> ExprResult;
+        args: Vec<ValRef<'res>>,
+    ) -> ExprResult<'res>;
 }
 
-struct NativeFn {
+struct NativeFn<'n> {
     arity: usize,
-    body: fn(Vec<Value>, interpreter: &Interpreter, out: &mut External) -> ExprResult,
+    body: fn(Vec<ValRef<'n>>, interpreter: &Interpreter, out: &mut External) -> ExprResult<'n>,
 }
 
-impl Debug for NativeFn {
+impl Debug for NativeFn<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "NativeFunction")
     }
 }
 
-impl Callable for NativeFn {
+impl<'nf> Callable<'nf> for NativeFn<'nf> {
     fn arity(&self) -> usize {
         return self.arity;
     }
 
-    fn call(
-        &self,
-        interpreter: &Interpreter,
-        out: &mut External,
-        args: Vec<Value>,
-    ) -> ExprResult {
+    fn call<'a, 'pt>(
+        &'nf self,
+        interpreter: &'nf Interpreter<'nf>,
+        out: &'a mut External<'pt>,
+        args: Vec<ValRef<'nf>>,
+    ) -> ExprResult<'nf> {
         (self.body)(args, interpreter, out)
     }
 }
@@ -149,19 +186,19 @@ struct RuntimeFn {
     body: Box<Expression>,
 }
 
-impl Callable for RuntimeFn {
+impl<'x> Callable<'x> for RuntimeFn {
     fn arity(&self) -> usize {
         self.params.len()
     }
-    fn call(
-        &self,
-        interpreter: &Interpreter,
-        out: &mut External,
-        args: Vec<Value>,
-    ) -> ExprResult {
+    fn call<'a, 'pt>(
+        &'x self,
+        interpreter: &'x Interpreter<'x>,
+        out: &'a mut External<'pt>,
+        args: Vec<ValRef<'x>>,
+    ) -> ExprResult<'x> {
         interpreter.environment.borrow_mut().wrap();
         for (param, arg) in self.params.iter().zip(args) {
-            interpreter.environment.borrow_mut().scopes[0].insert(param.ident.to_string(), arg);
+            interpreter.environment.borrow_mut().scopes[0].insert(param.ident.to_string(), RefCell::new(arg));
         }
         let result = interpreter.visit(&self.body, out);
         interpreter.environment.borrow_mut().unwrap();
@@ -169,7 +206,7 @@ impl Callable for RuntimeFn {
     }
 }
 
-impl Display for Value {
+impl Display for Value<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
             Value::Integer(x) => write!(f, "{}", x),
@@ -182,18 +219,18 @@ impl Display for Value {
     }
 }
 
-pub struct Environment {
-    scopes: Vec<HashMap<String, Value>>,
+pub struct Environment<'a> {
+    scopes: Vec<HashMap<String, RefCell<ValRef<'a>>>>,
 }
 
-impl Environment {
-    pub fn new() -> Environment {
+impl Environment<'_> {
+    pub fn new<'a>() -> Environment<'a> {
         let mut globals = HashMap::new();
         let clock = Value::Callable(Rc::new(NativeFn {
             arity: 0,
             body: |_, _, ext| {
                 let time = (ext.clock)();
-                ExprResult::Value(Value::Float(time))
+                ExprResult::Value(ValRef::Val(Value::Float(time)))
             },
         }));
         let print = Value::Callable(Rc::new(NativeFn {
@@ -203,8 +240,8 @@ impl Environment {
                 ExprResult::Value(args.remove(0))
             },
         }));
-        globals.insert("clock".to_string(), clock);
-        globals.insert("puts".to_string(), print);
+        //globals.insert("clock".to_string(), RefCell::new(ValRef::Val(clock)));
+        //globals.insert("print".to_string(), RefCell::new(ValRef::Val(print)));
         Environment {
             scopes: vec![globals],
         }
@@ -221,17 +258,17 @@ impl Environment {
 
 pub struct Interpreter<'a> {
     pub err_build: &'a ErrorBuilder,
-    pub environment: RefCell<Environment>,
+    pub environment: RefCell<Environment<'a>>,
 }
 
 
 impl<'a> Interpreter<'a> {
-    fn visit<'s, 'x>(&'s self, expr: &Expression, passthrough: &'s mut External<'x>) -> ExprResult {
+    fn visit<'x>(&'a self, expr: &Expression, passthrough: &mut External<'x>) -> ExprResult<'a> {
         match expr {
             Expression::Statement(x) => self.statement_expression(x, passthrough),
             Expression::Block(exprs) => self.block_expression(exprs, passthrough),
             Expression::Print(x) => self.print_expression(x, passthrough),
-            Expression::Literal(x) => ExprResult::Value(self.literal_value(x)),
+            Expression::Literal(x) => ExprResult::Value(ValRef::Val(self.literal_value(x))),
             Expression::Unary { kind, expr } => self.unary_value(kind, expr, passthrough),
             Expression::Binary { kind, operands } => self.binary_value(kind, operands, passthrough),
             Expression::Grouping(e) => self.visit(e, passthrough),
@@ -242,35 +279,39 @@ impl<'a> Interpreter<'a> {
             },
             Expression::ObjectNew(parent, fields) => {
                 let l = self.visit(parent, passthrough)?;
-                let mut proto: HashMap<FieldIdent, Ref<Value>> = l.proto_fields().into_iter().map(|(k, v)|{
-                    (match k {
-                        FieldIdent::Proto(s) => FieldIdent::Normal(s),
-                        x => x,
-                    }, v)
-                }).collect();
-                let x: Result<Vec<(FieldIdent, Ref<Value>)>, ExprError> = fields
+                let mut proto: HashMap<FieldIdent, RefCell<ValRef>> = l
+                    .proto_fields()
+                    .into_iter()
+                    .map(|(k, v)|{
+                        (match k {
+                            FieldIdent::Proto(s) => FieldIdent::Normal(s),
+                            x => x,
+                        },
+                        RefCell::new(ValRef::Ref(v)))
+                    }).collect();
+                let x: Result<Vec<(FieldIdent, RefCell<ValRef>)>, ExprError> = fields
                     .into_iter()
                     .map(|(k, v)|self.visit(v, passthrough)
                         .into_result()
-                        .map(|value|(k.clone(), value)))
+                        .map(|value|(k.clone(), RefCell::new(value))))
                     .collect();
-                let obj: HashMap<FieldIdent, Ref<Value>> = x?.into_iter().collect();
+                let obj: HashMap<FieldIdent, RefCell<ValRef>> = x?.into_iter().collect();
                 proto.extend(obj);
-                ExprResult::Value(Value::Object(proto))
+                ExprResult::Value(ValRef::Val(Value::Object(proto)))
             },
             Expression::FieldAccess(obj, field) => {
                 let l = self.visit(obj, passthrough)?;
                 l.field_access(field)
-                    .map(ExprResult::Value)
+                    .map(|z|ExprResult::Value(ValRef::Ref(z)))
                     .unwrap_or(ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantField)))
             },
             Expression::FieldSet(obj, field, rhs) => {
                 let mut l = self.visit(obj, passthrough)?;
                 let r = self.visit(rhs, passthrough)?;
                 l.field_set(field, r);
-                ExprResult::Value(Value::String(
+                ExprResult::Value(ValRef::Val(Value::String(
                     "THIS IS A NONE VALUE FROM SETTING FIELD".to_string(),
-                ))
+                )))
             },
             Expression::NonLocalAssign(s, expr) => {
                 let val = self.visit(expr, passthrough)?;
@@ -288,7 +329,7 @@ impl<'a> Interpreter<'a> {
                 for arg in args {
                     arg_vals.push(self.visit(arg, passthrough)?);
                 }
-                self.run_callable(method, arg_vals, passthrough)
+                self.run_callable(ValRef::Ref(method), arg_vals, passthrough)
             }
             Expression::If(cond, yes, no) => self.if_cond(cond, yes, no, passthrough),
             Expression::LogicOr(a, b) => self.logic_or(a, b, passthrough),
@@ -301,7 +342,7 @@ impl<'a> Interpreter<'a> {
     }
 
 
-    pub fn new(err_build: &'a ErrorBuilder) -> Interpreter {
+    pub fn new(err_build: &'a ErrorBuilder) -> Interpreter<'a> {
         Interpreter {
             err_build,
             environment: RefCell::new(Environment::new()),
@@ -309,7 +350,7 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn interpret<'x, 'pt>(
-        &'x self,
+        &'a self,
         exprs: Vec<Expression>,
         out: &'x mut External<'pt>,
     ) -> Option<Error> {
@@ -333,20 +374,20 @@ impl<'a> Interpreter<'a> {
     }
 
     fn statement_expression<'s, 'x>(
-        &'s self,
+        &'a self,
         expr: &Box<Expression>,
-        out: &'s mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         self.visit(expr, out)
     }
 
     fn block_expression<'pt, 'x>(
-        &'pt self,
+        &'a self,
         exprs: &Vec<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         self.environment.borrow_mut().wrap();
-        let mut last = Value::String("None type from block expression".to_string());
+        let mut last = ValRef::Val(Value::String("None type from block expression".to_string()));
         for expr in exprs {
             match self.visit(expr, out){
                 ExprResult::ControlFlow(x) => {
@@ -361,45 +402,48 @@ impl<'a> Interpreter<'a> {
     }
 
     fn print_expression<'pt, 'x>(
-        &'pt self,
+        &'a self,
         expr: &Box<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         let v = self.visit(expr, out)?;
         writeln!(out.output, "{}", v);
         ExprResult::Value(v)
     }
 
     fn unary_value<'pt, 'x>(
-        &'pt self,
+        &'a self,
         kind: &UnaryOperation,
         expr: &Box<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         let v = self.visit(expr, out)?;
+        let x = v.drill();
         match kind {
-            UnaryOperation::Not => match v {
-                Value::Bool(b) => ExprResult::Value(Value::Bool(!b)),
+            UnaryOperation::Not => match x {
+                Value::Bool(b) => ExprResult::Value(ValRef::Val(Value::Bool(!b))),
                 v => ExprResult::Err(self
                     .err_build
                     .create(0, 0, ErrorType::InterpretBooleanNotWrongType)),
             },
-            UnaryOperation::Minus => match v {
-                Value::Integer(i) => ExprResult::Value(Value::Integer(-i)),
-                Value::Float(f) => ExprResult::Value(Value::Float(-f)),
+            UnaryOperation::Minus => match x {
+                Value::Integer(i) => ExprResult::Value(ValRef::Val(Value::Integer(-i))),
+                Value::Float(f) => ExprResult::Value(ValRef::Val(Value::Float(-f))),
                 v => ExprResult::Err(self.err_build.create(0, 0, ErrorType::InterpretUnaryMinus)),
             },
         }
     }
 
     fn binary_value<'pt, 'x>(
-        &'pt self,
+        &'a self,
         kind: &BinaryOperation,
         operands: &(Box<Expression>, Box<Expression>),
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         let left = self.visit(&operands.0, out)?;
+        let left = *left.drill();
         let right = self.visit(&operands.1, out)?;
+        let right = *right.drill();
         match match kind {
             BinaryOperation::Plus => left + right,
             BinaryOperation::Equals => Ok(Value::Bool(left == right)),
@@ -412,70 +456,70 @@ impl<'a> Interpreter<'a> {
             BinaryOperation::Multiply => left * right,
             BinaryOperation::Divide => left / right,
         } {
-            Ok(v) => ExprResult::Value(v),
+            Ok(v) => ExprResult::Value(ValRef::Val(v)),
             Err(e) => ExprResult::Err(self.err_build.create(0, 0, e)),
         }
     }
 
-    fn get_var(&self, s: &str) -> ExprResult {
+    fn get_var(&'a self, s: &str) -> ExprResult<'a> {
         let scopes = &self.environment.borrow().scopes;
         for env in scopes {
             if env.contains_key(s) {
-                return ExprResult::Value(env.get(s).unwrap().clone());
+                return ExprResult::Value(ValRef::Ref(env.get(s).unwrap().borrow()));
             }
         }
         ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
     }
 
-    fn set_nonlocal(&self, s: &str, v: Value) -> ExprResult {
+    fn set_nonlocal(&self, s: &str, v: ValRef<'a>) -> ExprResult {
         let scopes = &mut self.environment.borrow_mut().scopes;
         for env in scopes {
             if env.contains_key(s) {
-                env.insert(s.to_string(), v);
-                return ExprResult::Value(Value::String(
+                env.insert(s.to_string(), RefCell::new(v));
+                return ExprResult::Value(ValRef::Val(Value::String(
                     "THIS IS A NONE VALUE FROM SETTING NON LOCAL".to_string(),
-                ));
+                )));
             }
         }
         ExprResult::Err(self.err_build.create(0, 0, ErrorType::NonExistantVariable))
     }
 
-    fn set_var(&self, s: &str, v: Value) -> ExprResult {
-        self.environment.borrow_mut().scopes[0].insert(s.to_string(), v);
-        ExprResult::Value(Value::String(
+    fn set_var(&'a self, s: &str, v: ValRef<'a>) -> ExprResult<'a> {
+        self.environment.borrow_mut().scopes[0].insert(s.to_string(), RefCell::new(v));
+        ExprResult::Value(ValRef::Val(Value::String(
             "THIS IS A NONE VALUE FROM SETTING VARIABLE".to_string(),
-        ))
+        )))
     }
 
     fn if_cond<'pt, 'x>(
-        &'pt self,
+        &'a self,
         cond: &Box<Expression>,
         yes: &Box<Expression>,
         no: &Option<Box<Expression>>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
-        let cond_eval = self.visit(cond, out)?;
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
+        let cond_eval = self.visit(cond, out)?.drill();
         if let Value::Bool(true) = cond_eval {
             self.visit(yes, out)
         } else {
             no.as_ref().map_or(
-                ExprResult::Value(Value::String(
+                ExprResult::Value(ValRef::Val(Value::String(
                     "PLACE HOLDER NONE VALUE FROM IF ELSE BRANCH".to_string(),
-                )),
+                ))),
                 |v| self.visit(&v, out),
             )
         }
     }
 
     fn while_loop<'pt, 'x>(
-        &'pt self,
+        &'a self,
         cond: &Box<Expression>,
         body: &Box<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
-        let mut result = Value::String("NONE VALUE FROM WHILE LOOP".to_string());
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
+        let mut result = ValRef::Val(Value::String("NONE VALUE FROM WHILE LOOP".to_string()));
         loop {
-            let eval = self.visit(cond, out)?;
+            let eval = self.visit(cond, out)?.drill();
             if let Value::Bool(true) = eval {
                 result = self.visit(body, out)?;
             } else {
@@ -485,11 +529,11 @@ impl<'a> Interpreter<'a> {
     }
 
     fn call<'pt, 'x>(
-        &'pt self,
+        &'a self,
         callee: &Box<Expression>,
         args: &Vec<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         let callable = self.visit(callee, out)?;
         let mut arguments_result = vec![];
         for arg in args {
@@ -508,11 +552,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn run_callable<'pt, 'x>(&self, callable: Value, args: Vec<Value>, out: &'pt mut External<'x>,) -> ExprResult {
-        if let Value::Callable(call) = callable {
+    fn run_callable<'pt, 'x>(&'a self, callable: ValRef<'a>, args: Vec<ValRef<'a>>, out: &mut External<'x>,) -> ExprResult<'a> {
+        if let Value::Callable(call) = callable.drill() {
             if call.arity() == args.len() {
                 match call.call(self, out, args) {
-                    ExprResult::ControlFlow(ControlFlowConstruct::Return(x)) => ExprResult::Value(x.unwrap_or(Value::String("NONE RETURN FROM FUNCTION".to_string()))),
+                    ExprResult::ControlFlow(ControlFlowConstruct::Return(x)) => ExprResult::Value(x.unwrap_or(ValRef::Val(Value::String("NONE RETURN FROM FUNCTION".to_string())))),
                     x => x,
                 }
             } else {
@@ -524,24 +568,24 @@ impl<'a> Interpreter<'a> {
     }
 
     fn function<'pt, 'x>(
-        &self,
+        &'a self,
         params: &Vec<Param>,
         body: &Box<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         // TODO the function needs to do closure stuff, which it doesn't right now :/
         // Try to capture the environment in which the closure is created, and store alongside (betting lifetime issues arise)
-        ExprResult::Value(Value::Callable(Rc::new(RuntimeFn {
+        ExprResult::Value(ValRef::Val(Value::Callable(Rc::new(RuntimeFn {
             params: params.to_vec(),
             body: body.clone(),
-        })))
+        }))))
     }
 
     fn retn<'pt, 'x>(
-        &self,
+        &'a self,
         expr: &Option<Box<Expression>>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
         expr.as_ref()
             .map(|e| match self.visit(e, out){
                 ExprResult::Value(v) => ExprResult::ControlFlow(ControlFlowConstruct::Return(Some(v))),
@@ -551,36 +595,36 @@ impl<'a> Interpreter<'a> {
     }
 
     fn logic_or<'pt, 'x>(
-        &'pt self,
+        &'a self,
         a: &Box<Expression>,
         b: &Box<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
-        let a_res = self.visit(a, out);
-        if let ExprResult::Value(Value::Bool(true)) = a_res {
-            a_res
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
+        let a_res = self.visit(a, out)?.drill();
+        if let Value::Bool(true) = a_res {
+            ExprResult::Value(ValRef::Val(Value::Bool(true)))
         } else {
             self.visit(b, out)
         }
     }
 
     fn logic_and<'pt, 'x>(
-        &'pt self,
+        &'a self,
         a: &Box<Expression>,
         b: &Box<Expression>,
-        out: &'pt mut External<'x>,
-    ) -> ExprResult {
-        let a_res = self.visit(a, out);
-        if let ExprResult::Value(Value::Bool(true)) = a_res {
+        out: &mut External<'x>,
+    ) -> ExprResult<'a> {
+        let a_res = self.visit(a, out)?.drill();
+        if let Value::Bool(true) = a_res {
             self.visit(b, out)
         } else {
-            ExprResult::Value(Value::Bool(false))
+            ExprResult::Value(ValRef::Val(Value::Bool(false)))
         }
     }
 }
 
-impl Add<Value> for Value {
-    type Output = Result<Value, ErrorType>;
+impl<'a> Add<Value<'a>> for Value<'a> {
+    type Output = Result<Value<'a>, ErrorType>;
     fn add(self, rhs: Value) -> Self::Output {
         match self {
             Value::Integer(i) => match rhs {
@@ -613,8 +657,8 @@ impl Add<Value> for Value {
     }
 }
 
-impl Sub<Value> for Value {
-    type Output = Result<Value, ErrorType>;
+impl<'a> Sub<Value<'a>> for Value<'a> {
+    type Output = Result<Value<'a>, ErrorType>;
     fn sub(self, rhs: Value) -> Self::Output {
         match (self, rhs) {
             (Value::Integer(l), Value::Integer(r)) => Ok(Value::Integer(l - r)),
@@ -626,7 +670,7 @@ impl Sub<Value> for Value {
     }
 }
 
-impl PartialEq<Value> for Value {
+impl PartialEq<Value<'_>> for Value<'_> {
     fn eq(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Integer(i), Value::Integer(i2)) => i == i2,
@@ -638,7 +682,7 @@ impl PartialEq<Value> for Value {
     }
 }
 
-impl PartialOrd<Value> for Value {
+impl PartialOrd<Value<'_>> for Value<'_> {
     fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
         match (self, other) {
             (Value::Integer(l), Value::Integer(r)) => l.partial_cmp(r),
@@ -652,8 +696,8 @@ impl PartialOrd<Value> for Value {
     }
 }
 
-impl Mul<Value> for Value {
-    type Output = Result<Value, ErrorType>;
+impl<'a> Mul<Value<'a>> for Value<'a> {
+    type Output = Result<Value<'a>, ErrorType>;
     fn mul(self, rhs: Value) -> Self::Output {
         match (self, rhs) {
             (Value::Integer(l), Value::Integer(r)) => Ok(Value::Integer(l * r)),
@@ -667,8 +711,8 @@ impl Mul<Value> for Value {
     }
 }
 
-impl Div<Value> for Value {
-    type Output = Result<Value, ErrorType>;
+impl<'a> Div<Value<'a>> for Value<'a> {
+    type Output = Result<Value<'a>, ErrorType>;
 
     fn div(self, rhs: Value) -> Self::Output {
         match (self, rhs) {

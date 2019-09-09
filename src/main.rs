@@ -72,7 +72,7 @@ pub fn run_wasm(input: &str, output: &js_sys::Function) {
     let mut w = Writer { output };
 
     let err_build = &ErrorBuilder::new("repl".to_string(), format!("Error in input"));
-
+    let interpreter = Interpreter::new(err_build);
     let mut ext = External {
         output: &mut w,
         clock: js_sys::Date::now,
@@ -80,7 +80,7 @@ pub fn run_wasm(input: &str, output: &js_sys::Function) {
     run(
         input.to_string(),
         err_build,
-        &mut Interpreter::new(err_build),
+        &interpreter,
         &mut ext,
     );
 }
@@ -91,10 +91,11 @@ lalrpop_mod!(pub grammar);
 fn run_file(file: &str) {
     let contents = fs::read_to_string(file).expect("Something went wrong reading the file");
     let x = &ErrorBuilder::new(file.to_string(), format!("Error in file: {}", file));
+    let interpreter = Interpreter::new(x);
     run(
         contents,
         x,
-        &Interpreter::new(x),
+        &interpreter,
         &mut External {
             output: &mut std::io::stdout(),
             clock: || {
@@ -112,7 +113,7 @@ fn run_prompt() {
     let mut iterator = stdin.lock().lines();
 
     let err_build = &ErrorBuilder::new("input".to_string(), format!("Error in input"));
-    let interpreter = &interpreter::Interpreter::new(err_build);
+    let interpreter = &Interpreter::new(err_build);
 
     loop {
         print!("> ");
@@ -143,7 +144,7 @@ pub struct External<'a> {
 fn run<'a, 'x, 's>(
     input: String,
     err_build: &ErrorBuilder,
-    interpreter: &'a Interpreter<'s>,
+    interpreter: &'s Interpreter<'s>,
     ext: &'a mut External<'a>,
 ) {
     let res = grammar::ProgramParser::new().parse(&input);

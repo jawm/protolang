@@ -192,23 +192,23 @@ fn match_and(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
     Ok(result)
 }
 
-fn match_equality(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+fn match_equality(pairs: Pairs<Rule>) -> Result<Expression, Error> {
     binary_helper(pairs, match_comparison)
 }
 
-fn match_comparison(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+fn match_comparison(pairs: Pairs<Rule>) -> Result<Expression, Error> {
     binary_helper(pairs, match_addition)
 }
 
-fn match_addition(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+fn match_addition(pairs: Pairs<Rule>) -> Result<Expression, Error> {
     binary_helper(pairs, match_multiplication)
 }
 
-fn match_multiplication(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+fn match_multiplication(pairs: Pairs<Rule>) -> Result<Expression, Error> {
     binary_helper(pairs, match_unary)
 }
 
-fn match_unary(mut pairs: Pairs<Rule>) -> Result<Expression, Error> {
+fn match_unary(pairs: Pairs<Rule>) -> Result<Expression, Error> {
     let next = pairs.next().unwrap();
     match next.as_rule() {
         Rule::unary_op => {
